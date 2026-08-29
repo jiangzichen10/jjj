@@ -1,0 +1,55 @@
+{
+  "checkpoint": "V3.1-D2E Compatibility Evidence Run Infrastructure",
+  "date": "2026-08-28",
+  "baseline": {
+    "file": "WorldQuant_BRAIN_v3.1_D2_CALIBRATION_READY.zip",
+    "sha256": "8d8077ffe48c938f359047f9861d396eb0642b75cfd33de015d79df1f4dbce69"
+  },
+  "status": {
+    "d2_offline_evidence_infrastructure": "COMPLETE",
+    "d2_calibration_tooling": "COMPLETE_READ_ONLY",
+    "d2e_infrastructure": "READY",
+    "d2e_real_platform_run": "NOT_STARTED",
+    "run_0006_role": "COMPATIBILITY_EVIDENCE_CONTROL",
+    "run_0006_scheduler_authority": "PHASE_COMPATIBILITY",
+    "run_0006_scheduler_shadow": "SHADOW_ONLY",
+    "run_0006_adaptive_control": "DISABLED",
+    "run_0006_authority_transition_allowed": false,
+    "scheduler_authoritative": false,
+    "d3": "NOT_STARTED"
+  },
+  "added": [
+    "ppl_engine/research_run_mode.py",
+    "ppl_round_v31_d2e.yaml",
+    "tests/test_v31_d2e_compatibility_evidence.py",
+    "V3_1_PROGRESS_13.md",
+    "V3_1_D2E_TEST_MATRIX.txt",
+    "WorldQuant_BRAIN_V3.1_HANDOVER_2026-08-28_D2E.md",
+    "V3_1_CHANGESET_13.json",
+    "V3_1_D2E_PACKAGE_MANIFEST.md",
+    "V3_1_D2E_SOURCE_FILE_LIST.txt",
+    "V3_1_D2E_SHA256SUMS.txt"
+  ],
+  "modified": [
+    "ppl_engine/round_orchestrator.py",
+    "ppl_engine/scheduler_evidence_report.py",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "removed": [],
+  "policy_changes": [
+    "Added dedicated D2E policy snapshot for run_0006 with immutable compatibility-authority lock.",
+    "No Qualification/Search/Repair policy semantics changed relative to the calibration-ready baseline."
+  ],
+  "schema_changes": [],
+  "qualification_rule_changes": [],
+  "simulation_identity_changes": [],
+  "notes": [
+    "run_0006 is reserved for V3.1-D2E and cannot be silently allocated by generic Continuous mode.",
+    "D2E creation validation checks both requested run identity and resolved durable run identity.",
+    "D2E resume validates durable research-run identity before generic policy migration/reload.",
+    "Maturation semantics are pre-registered as state-resolved; unresolved work remains right-censored.",
+    "Evidence sufficiency remains observational: no automatic N-sample stop, pause, calibration-ready decision, threshold mutation, or D3 activation.",
+    "run_0007 is reserved conceptually for a later D3 Adaptive Canary only after explicit D2 Safety Gate review and user authorization.",
+    "No live WorldQuant requests were made while implementing or validating D2E infrastructure."
+  ]
+}

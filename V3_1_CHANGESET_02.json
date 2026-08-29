@@ -1,0 +1,33 @@
+{
+  "checkpoint": "V3.1-A1",
+  "baseline": "v3.0.4o",
+  "status": "DEVELOPMENT_CHECKPOINT_COMPLETE_NOT_PRODUCTION_READY",
+  "added": [
+    "V3_1_PROGRESS_02.md",
+    "V3_1_CHANGESET_02.json",
+    "ppl_engine/continuous_engine.py",
+    "ppl_engine/continuous_runtime.py",
+    "tests/test_v31_lifecycle_a1.py"
+  ],
+  "changed": [
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md",
+    "ppl_engine/config.py",
+    "ppl_engine/continuous_policy.py",
+    "ppl_engine/round_orchestrator.py",
+    "ppl_runner.py",
+    "ppl_plan_v31.yaml",
+    "ppl_round_v31.yaml"
+  ],
+  "removed": [],
+  "tests": {
+    "compileall": "PASS",
+    "v31_foundation_and_a1": "22 passed",
+    "targeted_compatibility": "214 passed",
+    "execution_hash_sanitized": "14 passed, 1 deselected",
+    "frozen_v304o_production_baseline": "808 passed, 0 failed"
+  },
+  "production_network_requests": 0,
+  "production_database_modifications": 0,
+  "run_0005_modified": false,
+  "machine_lib_V2_1_modified": false
+}

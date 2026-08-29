@@ -1,0 +1,45 @@
+{
+  "checkpoint": "V3.1-C1",
+  "date": "2026-08-27",
+  "status": "OFFLINE_COMPLETE",
+  "baseline": "V3.1-B2",
+  "new_files": [
+    "ppl_engine/strategy_compat.py",
+    "tests/test_v31_strategy_compat_c1.py",
+    "V3_1_PROGRESS_06.md",
+    "V3_1_CHANGESET_06.json"
+  ],
+  "modified_files": [
+    "ppl_engine/round_orchestrator.py",
+    "ppl_round_v31.yaml",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "behavioral_changes": [
+    "Continuous Search selection is projected through SearchDecision and Scheduler before execution",
+    "Continuous Repair selection is projected through RepairDecision and Scheduler before execution",
+    "Strategy/Scheduler policy-version attribution is persisted in telemetry/events/batch reports"
+  ],
+  "explicit_non_changes": [
+    "No PPL qualification threshold change",
+    "No new two-year Sharpe rule",
+    "No Search ranking behavior change",
+    "No Repair ranking/planning behavior change",
+    "No machine_lib_V2_1.py change",
+    "No live WorldQuant request"
+  ],
+  "validation": {
+    "tests_collected": 874,
+    "sanitized_runnable_passed": 859,
+    "sanitized_runnable_failed": 0,
+    "production_db_bound_not_runnable": 15,
+    "v3_round_orchestrator_passed": 83,
+    "v31_group_passed": 60,
+    "production_remote_repair_passed": 149,
+    "phase_passed": 320,
+    "other_compatibility_passed": 247,
+    "compileall": "PASS"
+  },
+  "machine_lib_sha256": "58634f1eb01880edc88b7d9904edf3716335c35c17d57aaa0215985d82fa34e4",
+  "production_ready": false,
+  "next": "V3.1-C2 declaration-driven Qualification compatibility extraction"
+}

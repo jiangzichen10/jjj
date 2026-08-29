@@ -1,0 +1,42 @@
+{
+  "checkpoint": "V3.1-B1",
+  "baseline": "V3.1-A1 / v3.0.4o",
+  "date": "2026-08-27",
+  "production_ready": false,
+  "added": [
+    "ppl_engine/continuous_remote.py",
+    "tests/test_v31_remote_queue_b1.py",
+    "V3_1_PROGRESS_03.md",
+    "V3_1_CHANGESET_03.json",
+    "V3_1_B1_SHA256SUMS.txt"
+  ],
+  "changed": [
+    "ppl_engine/continuous_policy.py",
+    "ppl_engine/contracts.py",
+    "ppl_engine/live_execution.py",
+    "ppl_engine/ppc_controlled_branch.py",
+    "ppl_engine/production_repair.py",
+    "ppl_engine/round_orchestrator.py",
+    "ppl_engine/state_machine.py",
+    "ppl_engine/store.py",
+    "ppl_engine/summary_writer.py",
+    "ppl_plan_v31.yaml",
+    "ppl_round_v31.yaml",
+    "tests/test_ppc_controlled_branch_v1.py",
+    "tests/test_production_repair.py"
+  ],
+  "safety": {
+    "machine_lib_modified": false,
+    "production_db_modified": false,
+    "worldquant_network_used": false,
+    "run_0005_modified": false,
+    "duplicate_post_guard_preserved": true,
+    "global_db_failure_fail_closed": true
+  },
+  "test_summary": {
+    "sanitized_source_passed": 835,
+    "failed": 0,
+    "production_db_bound_deselected": 3,
+    "foundation_not_runnable_without_sanitized_out_db": 12
+  }
+}

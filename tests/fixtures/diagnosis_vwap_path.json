@@ -1,0 +1,6 @@
+{
+  "evidence_source":"HISTORICAL_USER_REPORTED","phase":"SIMULATION","candidate_id":"vwap_raw",
+  "candidate":{"candidate_id":"vwap_raw","field_id":"mean_vwap_return_60m_pre_close_2","field_type":"MATRIX","vector_reducer":"IDENTITY","operator":"raw","window":null,"direction":"NORMAL","expression":"mean_vwap_return_60m_pre_close_2","signal_family":"intraday_pv_feats/mean_vwap_return_60m_pre_close_2/NORMAL/RAW","repair_depth":0,"structure_status":"ELIGIBLE","pp_total_operator_count_estimate":0,"data_field_count_estimate":1},
+  "metrics":{"sharpe":-1.38,"turnover":1.4035},
+  "known_followup":{"expression":"ts_mean(-mean_vwap_return_60m_pre_close_2, 4)","sharpe":1.27,"turnover":0.6858,"evidence_note":"Only user-reported known endpoints; intermediate unobserved metrics are not inferred."}
+}

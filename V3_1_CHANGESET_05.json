@@ -1,0 +1,47 @@
+{
+  "checkpoint": "V3.1-B2",
+  "baseline": "V3.1-B2A / v3.0.4o",
+  "date": "2026-08-27",
+  "b_phase_complete": true,
+  "production_ready": false,
+  "added": [
+    "ppl_engine/continuous_discovery.py",
+    "tests/test_v31_unattended_b2b.py",
+    "tests/test_v31_unattended_b2c.py",
+    "tests/test_v31_unattended_soak.py",
+    "V3_1_PROGRESS_05.md",
+    "V3_1_CHANGESET_05.json",
+    "V3_1_B2_TEST_MATRIX.txt",
+    "V3_1_B2_SHA256SUMS.txt"
+  ],
+  "changed": [
+    "ppl_engine/continuous_check.py",
+    "ppl_engine/continuous_control.py",
+    "ppl_engine/continuous_policy.py",
+    "ppl_engine/discovery.py",
+    "ppl_engine/production_repair.py",
+    "ppl_engine/round_orchestrator.py",
+    "ppl_engine/store.py",
+    "ppl_round_v31.yaml",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "safety": {
+    "machine_lib_modified": false,
+    "production_db_modified": false,
+    "worldquant_network_used": false,
+    "run_0005_modified": false,
+    "duplicate_post_guard_preserved": true,
+    "uncertain_auto_repost": false,
+    "global_db_failure_fail_closed": true,
+    "derived_report_failure_degrades_only": true,
+    "continuous_discovery_get_only": true,
+    "continuous_check_get_only": true
+  },
+  "test_summary": {
+    "collected": 868,
+    "sanitized_source_runnable_passed": 853,
+    "failed": 0,
+    "production_db_bound_not_runnable": 15,
+    "mixed_unattended_soak_passed": true
+  }
+}

@@ -1,0 +1,49 @@
+schema_version: 1
+action: execute_live_validation
+run_profile: LIVE_VALIDATION
+validation_phase: PHASE_10B_INITIAL_VALIDATION
+source_run_id: run_0002
+phase10a_run_id: run_0003
+
+identity: {runner_goal: PPL}
+strategy: {target_mode: POWER_POOL_ATOM}
+simulation_settings:
+  instrument_type: EQUITY
+  region: GLB
+  universe: TOPDIV3000
+  delay: 1
+  neutralization: SUBINDUSTRY
+  default_decay: 0
+  truncation: 0.08
+  test_period: P0Y
+theme: {preset_id: GLB_D1_TOPDIV3000_HT_AUG26_2}
+selection:
+  dataset_ids: []
+  excluded_dataset_ids: [model110]
+  field_ids: []
+  semantic_classes: []
+  max_datasets: 5
+  max_fields_per_dataset: 20
+budgets:
+  max_new_simulation_posts: 10
+  max_candidates_per_dataset: 6
+  max_repair_rounds: 8
+  simulation_budget_allocation:
+    initial_search_fraction: 0.60
+    repair_reserve_fraction: 0.40
+    allow_automatic_borrow: false
+  max_check_candidates: 1
+  max_check_http_requests: 8
+  max_poll_requests_per_candidate: 8
+  max_check_sessions_per_candidate: 1
+runtime:
+  concurrency: 4
+  glb_max_concurrency: 4
+  other_max_concurrency: 8
+  simulation_poll_timeout_seconds: 1800
+execution:
+  resume_existing_simulations: true
+  use_cache: true
+  allow_new_simulations: true
+  run_pre_tag_checks: true
+  run_final_checks_after_refresh: false

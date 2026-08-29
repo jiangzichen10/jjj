@@ -1,0 +1,61 @@
+schema_version: 1
+action: explore_dataset
+run_profile: PRODUCTION_RESEARCH
+identity:
+  runner_goal: PPL
+strategy:
+  target_mode: POWER_POOL_ATOM
+simulation_settings:
+  instrument_type: EQUITY
+  region: GLB
+  universe: TOPDIV3000
+  delay: 1
+  neutralization: SUBINDUSTRY
+  default_decay: 0
+  truncation: 0.08
+  test_period: P0Y
+theme:
+  preset_id: GLB_D1_TOPDIV3000_HT_AUG26_2
+selection:
+  dataset_ids: []
+  excluded_dataset_ids:
+  - model110
+  field_ids: []
+  semantic_classes: []
+  max_datasets: 15
+  max_fields_per_dataset: 50
+budgets:
+  max_new_simulation_posts: 2000
+  simulation_budget_allocation:
+    initial_search_fraction: 0.8
+    repair_reserve_fraction: 0.2
+    allow_automatic_borrow: false
+  max_candidates_per_dataset: 300
+  max_repair_rounds: 400
+  max_check_candidates: 1000
+  max_check_http_requests: 20000
+  max_poll_requests_per_candidate: 40
+  max_check_sessions_per_candidate: 3
+runtime:
+  concurrency: 4
+  glb_max_concurrency: 4
+  other_max_concurrency: 8
+  simulation_poll_timeout_seconds: 1800
+  simulation_auto_cancel_on_timeout: true
+  simulation_auto_cancel_verify_attempts: 2
+  simulation_stale_backstop_seconds: 21600
+  # GET /check throttling resilience for unattended long-running rounds.
+  check_http_retries_per_poll: 1
+  check_429_initial_cooldown_seconds: 60
+  check_429_max_cooldown_seconds: 300
+  check_429_backoff_multiplier: 2.0
+  check_429_max_events_per_session: 4
+  check_unresolved_recovery_enabled: true
+  check_unresolved_recovery_per_cycle: 2
+  check_unresolved_retry_min_age_seconds: 300
+execution:
+  resume_existing_simulations: true
+  use_cache: true
+  allow_new_simulations: true
+  run_pre_tag_checks: true
+  run_final_checks_after_refresh: true

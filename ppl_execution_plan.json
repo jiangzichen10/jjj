@@ -1,0 +1,20 @@
+{
+  "budget": {
+    "budget_committed": 0,
+    "budget_consumed": 69,
+    "budget_projected": 0,
+    "initial_post_budget_remaining_after_plan": 3,
+    "initial_post_budget_remaining_current": 3,
+    "initial_total": 72,
+    "repair_reserve_current": 48
+  },
+  "cache_complete": 72,
+  "generated_at": "2026-08-16T11:06:52.790861+00:00",
+  "hold_uncertain": 0,
+  "new_simulation_required": 0,
+  "resume_existing": 0,
+  "retry_per_v21_policy": 0,
+  "run_id": "run_0002",
+  "selected_candidates": 72,
+  "stop_invalid": 0
+}

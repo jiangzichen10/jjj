@@ -1,0 +1,45 @@
+{
+  "checkpoint": "V3.1-C_COMPLETE",
+  "date": "2026-08-28",
+  "status": "POLICY_STRATEGY_LAYER_OFFLINE_COMPLETE",
+  "baseline": "V3.1-D1 shadow checkpoint (non-authoritative)",
+  "new_core_files": [
+    "ppl_engine/policy_specs.py",
+    "ppl_engine/search_strategy.py",
+    "ppl_engine/repair_strategy.py",
+    "tests/test_v31_policy_identity_c4.py",
+    "tests/test_v31_search_strategy_c4.py",
+    "tests/test_v31_repair_strategy_c4.py",
+    "tests/test_v31_search_repair_policy_c5.py",
+    "tests/test_v31_policy_bundle_c6.py"
+  ],
+  "modified_core_files": [
+    "ppl_engine/config.py",
+    "ppl_engine/continuous_runtime.py",
+    "ppl_engine/policy_runtime.py",
+    "ppl_engine/round_orchestrator.py",
+    "ppl_engine/round_store.py",
+    "ppl_round_v31.yaml",
+    "tests/test_v31_strategy_compat_c1.py"
+  ],
+  "guarantees": [
+    "Search/Repair policy drift does not change continuous Simulation semantic identity",
+    "Q/S/R policy activation is safe-checkpointed and atomic",
+    "restart restores durable last-known-good Q/S/R before considering edited YAML",
+    "SearchStrategy and RepairStrategy are pure/read-only",
+    "legacy aliases remain compatibility-only and are not reported as active policy",
+    "no hypothetical 2Y Sharpe >= 1.58 rule was introduced",
+    "D1 remains SHADOW_ONLY and non-authoritative"
+  ],
+  "validation": {
+    "collected": 930,
+    "sanitized_runnable": 915,
+    "passed": 915,
+    "failed": 0,
+    "production_db_bound_unavailable": 15,
+    "compileall": "PASS",
+    "live_worldquant_requests": 0
+  },
+  "machine_lib_sha256": "58634f1eb01880edc88b7d9904edf3716335c35c17d57aaa0215985d82fa34e4",
+  "next": "V3.1-D2 scheduler evidence/replay/safety gate; still non-authoritative"
+}

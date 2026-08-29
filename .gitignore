@@ -1,0 +1,29 @@
+﻿credentials.txt
+*.env
+.env
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+backup/
+cache/
+reports/
+
+*.zip
+*.7z
+*.rar
+
+# Failed / backup database artifacts
+*.db_*
+*.db-*
+*_failed_prestart
+
+# Runtime logs
+logs/
+*.log

@@ -1,0 +1,5 @@
+{
+  "evidence_source":"SYNTHETIC_OFFLINE_FIXTURE","phase":"SIMULATION","candidate_id":"low_1",
+  "candidate":{"candidate_id":"low_1","field_id":"ret_field","field_type":"MATRIX","vector_reducer":"IDENTITY","operator":"raw","window":null,"direction":"NORMAL","expression":"ret_field","signal_family":"ds/ret_field/NORMAL/RAW","repair_depth":0,"decay":1,"structure_status":"ELIGIBLE","pp_total_operator_count_estimate":0,"data_field_count_estimate":1},
+  "metrics":{"sharpe":1.30,"turnover":0.10}
+}

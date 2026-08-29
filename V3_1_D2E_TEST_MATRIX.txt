@@ -1,0 +1,45 @@
+V3.1-D2E COMPATIBILITY EVIDENCE RUN INFRASTRUCTURE TEST MATRIX — 2026-08-28
+
+Collected tests: 963
+Sanitized-source runnable: 948
+Passed runnable tests: 948
+Failed runnable tests: 0
+Historical production-DB-bound / unavailable by design: 15
+
+Non-overlapping validation groups:
+
+1) Compatibility
+   Result: 247 passed
+   Unavailable: 1 historical execution-hash integration requiring root production ppl_runner.db + alpha_results.db
+
+2) Phase 2.1 / 3 / 4 / 5 / 6 / 7 / 8 / 9 / 9.1 / 10A / 10B
+   Result: 320 passed
+   Unavailable:
+   - Phase-5 real production snapshot assertion requiring root ppl_runner.db
+   - Phase-7 CLI preview requiring root production runner DB
+
+3) Production logging / Production Repair / reconcile / remote simulation / repair selector / rescue evidence / same-family / turnover / SQLite diagnostics
+   Result: 149 passed
+
+4) V3.1 Foundation / A1 / B1 / B2 / C1 / C2 / C3 / C4 / C5 / C6 / D1 / D2 / calibration / D2E / unattended soak
+   Result: 149 passed
+
+5) V3 Round Orchestrator
+   Result: 83 passed
+
+Unavailable from sanitized source:
+- 12 tests in test_ppl_foundation.py requiring root alpha_results.db / production snapshot data
+- 3 additional production-DB-bound tests listed above
+
+Focused D1+D2+calibration+D2E: 39 passed
+New D2E focused: 7 passed
+Static compile: PASS
+Live WorldQuant requests: 0
+ROUND_SCHEMA_VERSION: 4
+machine_lib_V2_1.py SHA256: 58634f1eb01880edc88b7d9904edf3716335c35c17d57aaa0215985d82fa34e4
+run_0006 research mode: COMPATIBILITY_EVIDENCE
+run_0006 scheduler authority: PHASE_COMPATIBILITY
+run_0006 shadow mode: SHADOW_ONLY
+run_0006 adaptive control: DISABLED
+run_0006 authority transition allowed: false
+D3: NOT STARTED

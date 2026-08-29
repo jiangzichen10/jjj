@@ -1,0 +1,585 @@
+schema_version: 1
+identity:
+  runner_goal: PPL
+operator_count_policy:
+  legacy_counter: count_unique_operators
+  pp_estimator:
+    method: FUNCTION_CALL_TOTAL
+    estimator_version: 1
+    exclude_functions:
+    - ts_backfill
+    - group_backfill
+  live_check_authoritative: true
+power_pool_base_presets:
+  sharpe:
+    preset_min: 1.0
+  turnover:
+    unit: fraction
+    preset_min: 0.01
+    preset_max: 0.7
+  operator_count:
+    preset_max: 8
+  data_field_count:
+    preset_max: 3
+power_pool_live_base_checks:
+  required:
+  - SHARPE
+  - TURNOVER
+  - OPERATOR_COUNT
+  - DATA_FIELD_COUNT
+  - SUB_UNIVERSE
+  - POWER_POOL_CORRELATION
+  phase_policy:
+    pre_tag:
+      power_pool_correlation: DEFER_IF_UNAVAILABLE
+    final:
+      power_pool_correlation: REQUIRED
+current_theme:
+  preset_id: GLB_D1_TOPDIV3000_HT_AUG26_2
+  display_name: GLB/D1 Power Pool Aug '26 2
+  source: PRESET_PLUS_LIVE_CHECK
+  required_settings:
+    region: GLB
+    delay: 1
+    universe: TOPDIV3000
+  excluded_datasets:
+  - model110
+  local_preconditions:
+    high_turnover:
+      turnover:
+        unit: fraction
+        preset_min: 0.2
+  live_theme_checks:
+    required:
+    - THEME_MATCH
+    high_turnover_returns_ratio:
+      preset_min: 0.75
+limit_policy:
+  pre_check:
+    effective_limit_source: PRESET
+  post_check:
+    precedence:
+    - LIVE_CHECK
+    - PRESET
+near_pass:
+  near_pass_max_blockers: 2
+  strong_near_pass_max_blockers: 1
+  near_pass_normalized_gap_max: 0.1
+  strong_near_pass_normalized_gap_max: 0.05
+  normal_repair_max_attempts: 1
+  near_pass_rescue_max_attempts: 3
+  strong_near_pass_rescue_max_attempts: 5
+  fitness_fallback_min: 1.0
+  correlation_severe_gap: 0.2
+  neutralization_candidates_by_region:
+    GLB:
+    - SUBINDUSTRY
+    - MARKET
+  ppc_controlled_branch:
+    max_attempts: 3
+    meaningful_improvement_min: 0.01
+    meaningful_worsening_min: 0.01
+    require_no_new_fixed_blockers: true
+    require_not_strategy_rejected: true
+    max_sharpe_drop_abs: null
+    max_fitness_drop_abs: null
+    same_family_windows:
+    - 2
+    - 3
+    - 4
+    - 5
+discovery:
+  min_data_coverage: 0.9
+  allowed_field_types:
+  - MATRIX
+  - VECTOR
+  historical_coverage_preflight: false
+  save_raw_metadata: true
+semantic_classification:
+  semantic_classes:
+  - RETURN
+  - VOLUME
+  - PRICE_LEVEL
+  - VOLATILITY
+  - SPREAD_COST
+  - FLOW
+  - SENTIMENT
+  - FUNDAMENTAL
+  - UNKNOWN
+  precedence:
+  - PHRASE_OVERRIDE
+  - CATEGORY
+  - FIELD_ID
+  - DESCRIPTION
+  - FALLBACK_UNKNOWN
+  phrase_overrides:
+  - rule_id: fundamental_cash_flow
+    phrases:
+    - cash flow
+    - cashflow
+    - free cash flow
+    - operating cash flow
+    semantic_class: FUNDAMENTAL
+    confidence: HIGH
+  - rule_id: market_order_flow
+    phrases:
+    - order flow
+    - trade flow
+    - order imbalance
+    - signed volume imbalance
+    semantic_class: FLOW
+    confidence: HIGH
+  category_rules:
+  - rule_id: category_fundamental
+    patterns:
+    - fundamental
+    - financial statement
+    semantic_class: FUNDAMENTAL
+    confidence: HIGH
+  - rule_id: category_sentiment
+    patterns:
+    - sentiment
+    - news sentiment
+    semantic_class: SENTIMENT
+    confidence: HIGH
+  - rule_id: category_volatility
+    patterns:
+    - volatility
+    - risk volatility
+    semantic_class: VOLATILITY
+    confidence: HIGH
+  field_id_rules:
+  - rule_id: id_return
+    patterns:
+    - (^|_)(return|returns|ret)(_|$)
+    semantic_class: RETURN
+    confidence: MEDIUM
+  - rule_id: id_volume
+    patterns:
+    - (^|_)(volume|dadv|adv)(_|$)
+    semantic_class: VOLUME
+    confidence: MEDIUM
+  - rule_id: id_price_level
+    patterns:
+    - (^|_)(price|vwap|midprice)(_|$)
+    semantic_class: PRICE_LEVEL
+    confidence: MEDIUM
+  - rule_id: id_volatility
+    patterns:
+    - (^|_)(volatility|variance|stddev)(_|$)
+    semantic_class: VOLATILITY
+    confidence: MEDIUM
+  - rule_id: id_spread_cost
+    patterns:
+    - (^|_)(spread|bid_ask|transaction_cost)(_|$)
+    semantic_class: SPREAD_COST
+    confidence: MEDIUM
+  - rule_id: id_flow
+    patterns:
+    - (^|_)(order_flow|trade_flow|order_imbalance)(_|$)
+    semantic_class: FLOW
+    confidence: MEDIUM
+  - rule_id: id_sentiment
+    patterns:
+    - (^|_)(sentiment|news_score)(_|$)
+    semantic_class: SENTIMENT
+    confidence: MEDIUM
+  - rule_id: id_fundamental
+    patterns:
+    - (^|_)(cashflow|cash_flow|earnings|revenue|fundamental)(_|$)
+    semantic_class: FUNDAMENTAL
+    confidence: MEDIUM
+  description_rules:
+  - rule_id: description_return
+    patterns:
+    - \breturns?\b
+    - price return
+    semantic_class: RETURN
+    confidence: LOW
+  - rule_id: description_volume
+    patterns:
+    - trading volume
+    - share volume
+    - dollar volume
+    semantic_class: VOLUME
+    confidence: LOW
+  - rule_id: description_price_level
+    patterns:
+    - price level
+    - volume weighted average price
+    - vwap
+    semantic_class: PRICE_LEVEL
+    confidence: LOW
+  - rule_id: description_volatility
+    patterns:
+    - volatility
+    - return variance
+    semantic_class: VOLATILITY
+    confidence: LOW
+  - rule_id: description_spread_cost
+    patterns:
+    - bid.ask spread
+    - transaction cost
+    - quoted spread
+    semantic_class: SPREAD_COST
+    confidence: LOW
+  - rule_id: description_flow
+    patterns:
+    - order flow
+    - trade flow
+    - order imbalance
+    semantic_class: FLOW
+    confidence: LOW
+  - rule_id: description_sentiment
+    patterns:
+    - sentiment
+    - news tone
+    semantic_class: SENTIMENT
+    confidence: LOW
+  - rule_id: description_fundamental
+    patterns:
+    - cash flow
+    - free cash flow
+    - revenue
+    - earnings
+    semantic_class: FUNDAMENTAL
+    confidence: LOW
+vector_reducers:
+  MATRIX:
+  - identity
+  VECTOR:
+  - vec_sum
+  - vec_avg
+initial_selection:
+  max_dataset_fraction: 0.35
+  min_candidates_per_dataset: 5
+  max_semantic_class_fraction: 0.5
+  max_unknown_fraction: 0.1
+  max_initial_candidates_per_field: 4
+  max_windows_per_transform_family_per_field: 1
+candidate_routes:
+  RETURN:
+    priority: HIGH
+    max_templates_low_confidence: 3
+    transforms:
+    - name: raw
+    - name: rank
+    - name: ts_mean
+      windows:
+      - 2
+      - 3
+      - 4
+      - 5
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+    - name: ts_rank
+      windows:
+      - 5
+  VOLUME:
+    priority: HIGH
+    max_templates_low_confidence: 3
+    transforms:
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+      - 5
+    - name: ts_rank
+      windows:
+      - 5
+    - name: ts_zscore
+      windows:
+      - 5
+  PRICE_LEVEL:
+    priority: MEDIUM
+    max_templates_low_confidence: 3
+    transforms:
+    - name: rank
+    - name: zscore
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+      - 5
+    - name: ts_rank
+      windows:
+      - 5
+  VOLATILITY:
+    priority: MEDIUM
+    max_templates_low_confidence: 3
+    transforms:
+    - name: rank
+    - name: zscore
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+      - 5
+    - name: ts_rank
+      windows:
+      - 5
+    - name: ts_zscore
+      windows:
+      - 5
+  SPREAD_COST:
+    priority: HIGH
+    max_templates_low_confidence: 3
+    transforms:
+    - name: rank
+    - name: zscore
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+    - name: ts_rank
+      windows:
+      - 5
+  FLOW:
+    priority: HIGH
+    max_templates_low_confidence: 3
+    transforms:
+    - name: raw
+    - name: rank
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+      - 5
+    - name: ts_rank
+      windows:
+      - 5
+    - name: ts_zscore
+      windows:
+      - 5
+  SENTIMENT:
+    priority: MEDIUM
+    max_templates_low_confidence: 3
+    transforms:
+    - name: raw
+    - name: rank
+    - name: ts_delta
+      windows:
+      - 1
+      - 2
+      - 5
+    - name: ts_rank
+      windows:
+      - 5
+  FUNDAMENTAL:
+    priority: LOW
+    max_templates_low_confidence: 2
+    transforms:
+    - name: rank
+    - name: zscore
+    - name: ts_delta
+      windows:
+      - 5
+  UNKNOWN:
+    priority: LOW
+    max_templates: 2
+    transforms:
+    - name: raw
+    - name: rank
+heuristics:
+  reverse_abs_sharpe_min: 0.8
+  near_pass_sharpe_min: 0.7
+  weak_signal_stop_sharpe: 0.3
+  relative_field_priority_ratio: 0.8
+  local_similarity:
+    adjacent_window_distance: 2
+    known_finalist_penalty: 15
+    known_tagged_penalty: 20
+    known_submitted_penalty: 25
+  pp_corr:
+    structural_fail: 0.75
+    moderate_excess_over_live_limit: 0.1
+    max_post_tag_repair_rounds: 1
+  ht_ratio:
+    max_consecutive_failures: 2
+  dataset_preselection:
+    max_dataset_discovery_pool: 15
+    hint_weights:
+      INTRADAY: 30
+      PRICE_VOLUME: 28
+      MICROSTRUCTURE: 30
+      FLOW: 28
+      RETURN: 26
+      VOLATILITY: 24
+      NEWS_SENTIMENT: 16
+      ANALYST: 6
+      FUNDAMENTAL: 5
+      OTHER: 8
+      UNKNOWN: 7
+    confidence_multipliers:
+      HIGH: 1.0
+      MEDIUM: 0.8
+      LOW: 0.6
+    hint_rules:
+    - rule_id: ds_intraday
+      hint: INTRADAY
+      patterns:
+      - intraday
+      - intra.day
+      - minute
+      - hourly
+      - pre.close
+      - post.open
+    - rule_id: ds_microstructure
+      hint: MICROSTRUCTURE
+      patterns:
+      - microstructure
+      - order book
+      - bid.ask
+      - tick data
+      - limit order
+    - rule_id: ds_price_volume
+      hint: PRICE_VOLUME
+      patterns:
+      - price.volume
+      - market data
+      - technical indicator
+      - vwap
+      - trading volume
+    - rule_id: ds_flow
+      hint: FLOW
+      patterns:
+      - order flow
+      - money flow
+      - trade flow
+      - flow imbalance
+    - rule_id: ds_return
+      hint: RETURN
+      patterns:
+      - price returns?
+      - residual returns?
+      - stock returns?
+    - rule_id: ds_volatility
+      hint: VOLATILITY
+      patterns:
+      - volatility
+      - return variance
+      - realized variance
+    - rule_id: ds_news_sentiment
+      hint: NEWS_SENTIMENT
+      patterns:
+      - news sentiment
+      - news articles
+      - media sentiment
+      - news tone
+    - rule_id: ds_analyst
+      hint: ANALYST
+      patterns:
+      - analyst
+      - broker estimates?
+      - consensus estimates?
+    - rule_id: ds_fundamental
+      hint: FUNDAMENTAL
+      patterns:
+      - fundamental
+      - financial statements?
+      - cash flow
+      - earnings forecasts?
+    metadata_points:
+      coverage_max: 10
+      value_score_max: 5
+      value_score_reference_max: 5
+      novelty_max: 5
+      novelty_thresholds:
+        alpha_count:
+        - - 50
+          - 2.5
+        - - 200
+          - 1.5
+        - - 1000
+          - 0.5
+        user_count:
+        - - 50
+          - 2.5
+        - - 200
+          - 1.5
+        - - 1000
+          - 0.5
+    field_evidence_points:
+      semantic_relevance_max: 14
+      coverage_depth_max: 4
+      field_type_diversity_max: 3
+      confidence_max: 4
+      coverage_depth_reference: 20
+      semantic_weights:
+        RETURN: 1.0
+        VOLUME: 1.0
+        PRICE_LEVEL: 0.9
+        VOLATILITY: 1.0
+        SPREAD_COST: 1.0
+        FLOW: 1.0
+        SENTIMENT: 0.5
+        FUNDAMENTAL: 0.1
+        UNKNOWN: 0.2
+repair_budget:
+  sharpe:
+    max_rounds: 2
+    max_candidates_per_round: 6
+  turnover_high:
+    max_rounds: 2
+    max_candidates_per_round: 8
+  turnover_low:
+    max_rounds: 2
+    max_candidates_per_round: 6
+  ht_ratio:
+    max_rounds: 2
+    max_candidates_per_round: 6
+  sub_universe:
+    max_rounds: 2
+    max_candidates_per_round: 8
+  concentration:
+    max_rounds: 2
+    max_candidates_per_round: 6
+  ppl_corr:
+    max_rounds: 1
+    max_candidates_per_round: 4
+repair_cycle_control:
+  max_repair_depth: 4
+  max_same_failure_repeats: 2
+  reject_duplicate_repair_signature: true
+  reject_duplicate_sim_key: true
+side_effect_tolerance:
+  hard_gate_may_flip_to_fail: false
+  sharpe_drop_fraction_max: 0.1
+  fitness_drop_fraction_max: 0.2
+  margin_drop_fraction_max: 0.15
+  turnover_distance_may_worsen: false
+  preserve_sub_universe_pass: true
+  preserve_ht_ratio_pass: true
+check:
+  poll_seconds: 8
+  timeout_seconds: 300
+  transport_max_retries: 8
+  keep_raw_payload: true
+description_validation:
+  minimum_length: 100
+summary_limits:
+  pre_tag_finalists: 10
+  awaiting_manual_properties: 10
+  ppl_tagged: 10
+  final_check_pass: 10
+  ready_for_submit: 10
+  submitted: 10
+  near_pass: 10
+  top_candidates: 10
+  important_failures: 15
+  stopped: 20
+  top_families: 10
+  operator_validation_needed: 10
+  diversity:
+    max_top_per_dataset: 4
+    max_top_per_field: 2
+    max_top_per_family: 1
+    max_top_per_semantic: 4
+safety:
+  auto_submit: false
+  auto_power_pool_tag: false
+  auto_modify_properties: false
+  allow_delete_alpha: false
+  allow_delete_database_records: false

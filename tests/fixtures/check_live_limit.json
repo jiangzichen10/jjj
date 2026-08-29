@@ -1,0 +1,1 @@
+{"evidence_source":"SYNTHETIC_TEST","phase":"PRE_TAG","is":{"checks":[{"name":"HIGH_TURNOVER_RETURNS_RATIO","result":"PASS","value":0.81,"limit":0.77,"unit":"ratio","unitConfidence":"HIGH"}]}}

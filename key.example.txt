@@ -1,0 +1,2 @@
+REDACTED
+# Put your own local BRAIN credentials in key.txt. Do not share key.txt.

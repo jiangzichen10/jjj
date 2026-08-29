@@ -1,0 +1,314 @@
+{
+  "author": "[REDACTED]",
+  "category": "PRICE_REVERSION",
+  "classifications": [
+    {
+      "id": "DATA_USAGE:SINGLE_DATA_SET",
+      "name": "Single Data Set Alpha"
+    },
+    {
+      "id": "HIGH_TURNOVER:HIGH_TURNOVER",
+      "name": "High Turnover"
+    }
+  ],
+  "color": null,
+  "competitions": null,
+  "dateCreated": "2026-08-15T03:26:22-04:00",
+  "dateModified": "2026-08-15T03:59:40-04:00",
+  "dateSubmitted": null,
+  "favorite": false,
+  "grade": null,
+  "hidden": false,
+  "id": "WjAxWeoG",
+  "is": {
+    "bookSize": 20000000,
+    "checks": [
+      {
+        "limit": 1.58,
+        "name": "LOW_SHARPE",
+        "result": "WARNING",
+        "value": 1.17
+      },
+      {
+        "limit": 1.58,
+        "name": "CLUSTER_TEST",
+        "result": "WARNING",
+        "value": 0.72
+      },
+      {
+        "limit": 1.0,
+        "name": "LOW_FITNESS",
+        "result": "WARNING",
+        "value": 0.54
+      },
+      {
+        "limit": 1,
+        "name": "LOW_GLB_AMER_SHARPE",
+        "result": "WARNING",
+        "value": 0.6
+      },
+      {
+        "limit": 1,
+        "name": "LOW_GLB_EMEA_SHARPE",
+        "result": "WARNING",
+        "value": 0.27
+      },
+      {
+        "limit": 1,
+        "name": "LOW_GLB_APAC_SHARPE",
+        "result": "WARNING",
+        "value": 0.99
+      },
+      {
+        "limit": 0.01,
+        "name": "LOW_TURNOVER",
+        "result": "PASS",
+        "value": 0.608
+      },
+      {
+        "limit": 0.7,
+        "name": "HIGH_TURNOVER",
+        "result": "PASS",
+        "value": 0.608
+      },
+      {
+        "name": "CONCENTRATED_WEIGHT",
+        "result": "PASS"
+      },
+      {
+        "limit": 0.72,
+        "name": "LOW_SUB_UNIVERSE_SHARPE",
+        "result": "PASS",
+        "value": 1.08
+      },
+      {
+        "name": "SELF_CORRELATION",
+        "result": "PENDING"
+      },
+      {
+        "name": "DATA_DIVERSITY",
+        "result": "PENDING"
+      },
+      {
+        "name": "PROD_CORRELATION",
+        "result": "PENDING"
+      },
+      {
+        "name": "REGULAR_SUBMISSION",
+        "result": "PENDING"
+      },
+      {
+        "limit": 0.2,
+        "name": "HT_TURNOVER",
+        "result": "PASS",
+        "value": 0.608
+      },
+      {
+        "limit": 0.75,
+        "name": "HT_HIGH_TURNOVER_RETURNS_RATIO",
+        "result": "PASS",
+        "value": 0.8224
+      },
+      {
+        "limit": 1.7,
+        "name": "HT_LIQUID_TOPDIV3000_SHARPE",
+        "result": "WARNING",
+        "value": 1.17
+      },
+      {
+        "limit": 2.0,
+        "name": "HT_INVESTABLE_MAX_TRADE_SHARPE",
+        "result": "WARNING",
+        "value": 0.88
+      },
+      {
+        "limit": 0.2,
+        "name": "HT_INVESTABLE_MAX_TRADE_TURNOVER",
+        "result": "PASS",
+        "value": 0.5317
+      },
+      {
+        "limit": 2.0,
+        "name": "HT_INVESTABLE_MAX_POSITION_SHARPE",
+        "result": "WARNING",
+        "value": 1.28
+      },
+      {
+        "limit": 0.2,
+        "name": "HT_INVESTABLE_MAX_POSITION_TURNOVER",
+        "result": "PASS",
+        "value": 0.6026
+      },
+      {
+        "limit": "RAM",
+        "name": "HT_ORTHOGONAL_RAM_NEUTRALIZATION",
+        "result": "WARNING",
+        "value": "Subindustry"
+      },
+      {
+        "limit": 1.58,
+        "name": "LOW_2Y_SHARPE",
+        "result": "WARNING",
+        "value": 0.97
+      },
+      {
+        "name": "MATCHES_CLASSIFICATION",
+        "result": "PASS",
+        "value": [
+          "High Turnover"
+        ]
+      },
+      {
+        "name": "POWER_POOL_CORRELATION",
+        "result": "PENDING"
+      },
+      {
+        "competitions": [
+          {
+            "id": "GAC2026",
+            "name": "Global Alpha Competition 2026"
+          }
+        ],
+        "name": "MATCHES_COMPETITION",
+        "result": "PASS"
+      },
+      {
+        "effective": 1,
+        "multiplier": 1.0,
+        "name": "MATCHES_PYRAMID",
+        "pyramids": [
+          {
+            "multiplier": 1.0,
+            "name": "GLB/D1/PV"
+          }
+        ],
+        "result": "PASS"
+      },
+      {
+        "name": "MATCHES_THEMES",
+        "result": "PENDING",
+        "themes": [
+          {
+            "id": "9BKPE8D",
+            "multiplier": 1.0,
+            "name": "GLB/D1 Power Pool Aug`26 2"
+          }
+        ]
+      },
+      {
+        "name": "OSMOSIS_ALLOCATION",
+        "result": "WARNING"
+      }
+    ],
+    "drawdown": 0.3855,
+    "fitness": 0.54,
+    "glbAmer": {
+      "bookSize": 20000000,
+      "drawdown": 0.3194,
+      "fitness": 0.27,
+      "longCount": 472,
+      "margin": 0.000418,
+      "pnl": 6406614,
+      "returns": 0.0619,
+      "sharpe": 0.6,
+      "shortCount": 453,
+      "turnover": 0.2962
+    },
+    "glbApac": {
+      "bookSize": 20000000,
+      "drawdown": 0.1001,
+      "fitness": 0.55,
+      "longCount": 203,
+      "margin": 0.000613,
+      "pnl": 5498371,
+      "returns": 0.0532,
+      "sharpe": 0.99,
+      "shortCount": 214,
+      "turnover": 0.1733
+    },
+    "glbEmea": {
+      "bookSize": 20000000,
+      "drawdown": 0.1913,
+      "fitness": 0.09,
+      "longCount": 182,
+      "margin": 0.000208,
+      "pnl": 1490246,
+      "returns": 0.0144,
+      "sharpe": 0.27,
+      "shortCount": 192,
+      "turnover": 0.1386
+    },
+    "investabilityConstrained": {
+      "bookSize": 20000000,
+      "drawdown": 0.428,
+      "fitness": 0.37,
+      "longCount": 892,
+      "margin": 0.00036,
+      "pnl": 9892493,
+      "returns": 0.0956,
+      "sharpe": 0.88,
+      "shortCount": 893,
+      "turnover": 0.5317
+    },
+    "longCount": 858,
+    "margin": 0.000426,
+    "pnl": 13395230,
+    "returns": 0.1295,
+    "riskNeutralized": {
+      "bookSize": 20000000,
+      "drawdown": 0.1193,
+      "fitness": 0.3,
+      "longCount": 858,
+      "margin": 0.000139,
+      "pnl": 4370342,
+      "returns": 0.0423,
+      "sharpe": 1.15,
+      "shortCount": 861,
+      "turnover": 0.608
+    },
+    "sharpe": 1.17,
+    "shortCount": 861,
+    "startDate": "2014-01-01",
+    "turnover": 0.608
+  },
+  "name": "00003",
+  "origin": "PLATFORM",
+  "os": null,
+  "osmosisPoints": null,
+  "prod": null,
+  "pyramidThemes": null,
+  "pyramids": null,
+  "regular": {
+    "code": "ts_mean(-mean_vwap_return_60m_pre_close_2, 5)",
+    "description": "Idea: Stocks with unusually weak late-session VWAP returns may experience short-term price reversal, while stocks with unusually strong late-session performance may subsequently underperform on a relative basis.\n\nRationale for data used: The mean_vwap_return_60m_pre_close_2 field measures the average return of the volume-weighted average price during the final 60 minutes before market close. This captures recent late-session trading behavior and price pressure.\n\nRationale for operators used: The signal direction is reversed to capture short-term mean reversion. A four-day time-series mean aggregates the recent late-session return information, reduces day-to-day noise, and brings turnover into a range suitable for the Power Pool high-turnover theme.",
+    "operatorCount": 2
+  },
+  "settings": {
+    "decay": 0,
+    "delay": 1,
+    "endDate": "2023-12-31",
+    "instrumentType": "EQUITY",
+    "language": "FASTEXPR",
+    "maxPosition": "OFF",
+    "maxTrade": "OFF",
+    "nanHandling": "ON",
+    "neutralization": "SUBINDUSTRY",
+    "pasteurization": "ON",
+    "region": "GLB",
+    "startDate": "2014-01-01",
+    "truncation": 0.08,
+    "unitHandling": "VERIFY",
+    "universe": "TOPDIV3000",
+    "visualization": false
+  },
+  "stage": "IS",
+  "status": "UNSUBMITTED",
+  "tags": [
+    "PowerPoolSelected"
+  ],
+  "team": "[REDACTED]",
+  "test": null,
+  "themes": null,
+  "train": null,
+  "type": "REGULAR"
+}

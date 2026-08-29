@@ -1,0 +1,37 @@
+{
+  "checkpoint": "V3.1-D2 Scheduler Evidence Calibration Readiness",
+  "date": "2026-08-28",
+  "baseline": {
+    "file": "WorldQuant_BRAIN_v3.1_D2_COMPLETE.zip",
+    "sha256": "bd4ddfd2a9386378586d514620e358645a69f20085197a6bed9a5a58d547e9e7"
+  },
+  "status": {
+    "calibration_tooling": "COMPLETE",
+    "real_evidence_accumulation": "PENDING",
+    "scheduler_authoritative": false,
+    "execution_mode": "PHASE_COMPATIBILITY",
+    "d3": "NOT_STARTED"
+  },
+  "added": [
+    "ppl_engine/scheduler_evidence_report.py",
+    "tests/test_v31_scheduler_evidence_report.py",
+    "V3_1_PROGRESS_12.md",
+    "V3_1_CHANGESET_12.json",
+    "V3_1_D2_CALIBRATION_TEST_MATRIX.txt",
+    "V3_1_D2_CALIBRATION_PACKAGE_MANIFEST.md"
+  ],
+  "modified": [
+    "ppl_runner.py",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "policy_changes": [],
+  "schema_changes": [],
+  "qualification_rule_changes": [],
+  "simulation_identity_changes": [],
+  "notes": [
+    "Read-only calibration resolves policy identity from durable round config_json.",
+    "No activation threshold is generated or mutated.",
+    "D3 remains not started.",
+    "Roadmap dependency surfaced: real pre-D3 Shadow evidence and an F-only first live run cannot both be literal; live run identity must be confirmed before execution."
+  ]
+}

@@ -1,0 +1,633 @@
+{
+  "authentication_note": "BRAIN authentication occurs before the post-authentication GET-only firewall.",
+  "budget_status": "BUDGET_OVERFLOW",
+  "budget_utilization_pct": 60.0,
+  "candidate_estimate_before_dataset_cap": 432,
+  "candidate_estimate_by_dataset": {
+    "intraday_pv_feats": 60,
+    "pv106": 35,
+    "pv30": 45,
+    "pv98": 60,
+    "techindi_model": 60
+  },
+  "candidate_estimate_by_semantic_class": {
+    "PRICE_LEVEL": 110,
+    "RETURN": 105,
+    "SPREAD_COST": 25,
+    "UNKNOWN": 15,
+    "VOLUME": 5
+  },
+  "candidate_estimate_by_transform": {
+    "rank": 55,
+    "raw": 32,
+    "ts_delta": 77,
+    "ts_mean": 42,
+    "ts_rank": 29,
+    "ts_zscore": 1,
+    "zscore": 24
+  },
+  "candidate_estimate_by_vector_reducer": {
+    "identity": 260
+  },
+  "candidate_estimate_raw_by_dataset": {
+    "intraday_pv_feats": 111,
+    "pv106": 35,
+    "pv30": 45,
+    "pv98": 109,
+    "techindi_model": 132
+  },
+  "candidate_estimate_total": 260,
+  "classification_confidence_counts": {
+    "LOW": 32,
+    "MEDIUM": 53
+  },
+  "classification_warning_count": 9,
+  "dataset_cap_truncated_candidates": 172,
+  "dataset_discovery_pool": [
+    {
+      "components": {
+        "coverage_metadata": 12.0,
+        "field_evidence": 19.0714,
+        "novelty": 3.0,
+        "semantic_hint": 30.0
+      },
+      "dataset_hint": "MICROSTRUCTURE",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "pv98",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 3,
+          "MEDIUM": 18
+        },
+        "components": {
+          "classification_confidence": 2.1714,
+          "coverage_depth": 4.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 11.4
+        },
+        "coverage_pass_fields": 21,
+        "field_type_counts": {
+          "MATRIX": 21
+        },
+        "score": 19.0714,
+        "semantic_class_counts": {
+          "PRICE_LEVEL": 15,
+          "UNKNOWN": 3,
+          "VOLUME": 3
+        }
+      },
+      "matched_text": "Tick Data",
+      "score": 64.0714,
+      "selected": true
+    },
+    {
+      "components": {
+        "coverage_metadata": 10.147,
+        "field_evidence": 18.3969,
+        "novelty": 2.0,
+        "semantic_hint": 30.0
+      },
+      "dataset_hint": "INTRADAY",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "intraday_pv_feats",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 19,
+          "MEDIUM": 78
+        },
+        "components": {
+          "classification_confidence": 2.0866,
+          "coverage_depth": 4.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 10.8103
+        },
+        "coverage_pass_fields": 97,
+        "field_type_counts": {
+          "MATRIX": 97
+        },
+        "score": 18.3969,
+        "semantic_class_counts": {
+          "PRICE_LEVEL": 69,
+          "SPREAD_COST": 2,
+          "UNKNOWN": 19,
+          "VOLUME": 7
+        }
+      },
+      "matched_text": "intraday",
+      "score": 60.5439,
+      "selected": true
+    },
+    {
+      "components": {
+        "coverage_metadata": 11.744,
+        "field_evidence": 20.5041,
+        "novelty": 0.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "techindi_model",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 1579,
+          "MEDIUM": 239
+        },
+        "components": {
+          "classification_confidence": 1.0103,
+          "coverage_depth": 4.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 13.9938
+        },
+        "coverage_pass_fields": 1818,
+        "field_type_counts": {
+          "MATRIX": 1818
+        },
+        "score": 20.5041,
+        "semantic_class_counts": {
+          "RETURN": 1817,
+          "UNKNOWN": 1
+        }
+      },
+      "matched_text": "Technical Indicator",
+      "score": 60.2481,
+      "selected": true
+    },
+    {
+      "components": {
+        "coverage_metadata": 10.586,
+        "field_evidence": 19.3,
+        "novelty": 2.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv30",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 15
+        },
+        "components": {
+          "classification_confidence": 0.8,
+          "coverage_depth": 3.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 14.0
+        },
+        "coverage_pass_fields": 15,
+        "field_type_counts": {
+          "MATRIX": 15
+        },
+        "score": 19.3,
+        "semantic_class_counts": {
+          "RETURN": 15
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 59.886,
+      "selected": true
+    },
+    {
+      "components": {
+        "coverage_metadata": 10.437,
+        "field_evidence": 13.5,
+        "novelty": 5.0,
+        "semantic_hint": 30.0
+      },
+      "dataset_hint": "MICROSTRUCTURE",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "pv106",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 5,
+          "MEDIUM": 5
+        },
+        "components": {
+          "classification_confidence": 1.6,
+          "coverage_depth": 2.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 8.4
+        },
+        "coverage_pass_fields": 10,
+        "field_type_counts": {
+          "MATRIX": 10
+        },
+        "score": 13.5,
+        "semantic_class_counts": {
+          "SPREAD_COST": 5,
+          "UNKNOWN": 5
+        }
+      },
+      "matched_text": "Microstructure",
+      "score": 58.937,
+      "selected": true
+    },
+    {
+      "components": {
+        "coverage_metadata": 13.0,
+        "field_evidence": 16.1486,
+        "novelty": 1.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "tech_chart_model",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 387,
+          "MEDIUM": 115
+        },
+        "components": {
+          "classification_confidence": 1.1665,
+          "coverage_depth": 4.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 9.4821
+        },
+        "coverage_pass_fields": 502,
+        "field_type_counts": {
+          "MATRIX": 502
+        },
+        "score": 16.1486,
+        "semantic_class_counts": {
+          "PRICE_LEVEL": 28,
+          "RETURN": 261,
+          "UNKNOWN": 199,
+          "VOLATILITY": 12,
+          "VOLUME": 2
+        }
+      },
+      "matched_text": "Technical Indicator",
+      "score": 58.1486,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 11.0,
+        "field_evidence": 16.7,
+        "novelty": 1.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv47",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 2
+        },
+        "components": {
+          "classification_confidence": 0.8,
+          "coverage_depth": 0.4,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 14.0
+        },
+        "coverage_pass_fields": 2,
+        "field_type_counts": {
+          "MATRIX": 2
+        },
+        "score": 16.7,
+        "semantic_class_counts": {
+          "RETURN": 2
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 56.7,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 14.0,
+        "field_evidence": 5.3,
+        "novelty": 5.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv149",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 1
+        },
+        "components": {
+          "classification_confidence": 0.8,
+          "coverage_depth": 0.2,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 2.8
+        },
+        "coverage_pass_fields": 1,
+        "field_type_counts": {
+          "MATRIX": 1
+        },
+        "score": 5.3,
+        "semantic_class_counts": {
+          "UNKNOWN": 1
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 52.3,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 11.0,
+        "field_evidence": 12.2475,
+        "novelty": 0.5,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv37",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 60,
+          "MEDIUM": 20
+        },
+        "components": {
+          "classification_confidence": 1.2,
+          "coverage_depth": 4.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 5.5475
+        },
+        "coverage_pass_fields": 80,
+        "field_type_counts": {
+          "MATRIX": 80
+        },
+        "score": 12.2475,
+        "semantic_class_counts": {
+          "PRICE_LEVEL": 11,
+          "UNKNOWN": 59,
+          "VOLUME": 10
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 51.7475,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 7.75,
+        "field_evidence": 11.8662,
+        "novelty": 0.5,
+        "semantic_hint": 30.0
+      },
+      "dataset_hint": "INTRADAY",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "other496",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "HIGH": 5,
+          "LOW": 122,
+          "MEDIUM": 3
+        },
+        "components": {
+          "classification_confidence": 0.96,
+          "coverage_depth": 4.0,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 5.4062
+        },
+        "coverage_pass_fields": 130,
+        "field_type_counts": {
+          "MATRIX": 130
+        },
+        "score": 11.8662,
+        "semantic_class_counts": {
+          "FUNDAMENTAL": 6,
+          "RETURN": 29,
+          "UNKNOWN": 93,
+          "VOLATILITY": 1,
+          "VOLUME": 1
+        }
+      },
+      "matched_text": "Intraday",
+      "score": 50.1162,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 11.0,
+        "field_evidence": 10.5461,
+        "novelty": 0.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "ID_NAME",
+      "dataset_id": "pv1",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 10,
+          "MEDIUM": 3
+        },
+        "components": {
+          "classification_confidence": 1.1692,
+          "coverage_depth": 2.6,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 5.2769
+        },
+        "coverage_pass_fields": 13,
+        "field_type_counts": {
+          "MATRIX": 13
+        },
+        "score": 10.5461,
+        "semantic_class_counts": {
+          "PRICE_LEVEL": 1,
+          "RETURN": 1,
+          "UNKNOWN": 10,
+          "VOLUME": 1
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 49.5461,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 8.507,
+        "field_evidence": 5.7,
+        "novelty": 4.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv173",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 3
+        },
+        "components": {
+          "classification_confidence": 0.8,
+          "coverage_depth": 0.6,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 2.8
+        },
+        "coverage_pass_fields": 3,
+        "field_type_counts": {
+          "VECTOR": 3
+        },
+        "score": 5.7,
+        "semantic_class_counts": {
+          "UNKNOWN": 3
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 46.207,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 13.0,
+        "field_evidence": 0.0,
+        "novelty": 5.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "univ1",
+      "field_evidence": {
+        "classification_confidence_counts": {},
+        "components": {
+          "classification_confidence": 0.0,
+          "coverage_depth": 0.0,
+          "field_type_diversity": 0.0,
+          "semantic_relevance": 0.0
+        },
+        "coverage_pass_fields": 0,
+        "field_type_counts": {},
+        "score": 0.0,
+        "semantic_class_counts": {}
+      },
+      "matched_text": "Price Volume",
+      "score": 46.0,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 8.834,
+        "field_evidence": 5.5,
+        "novelty": 0.5,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv13",
+      "field_evidence": {
+        "classification_confidence_counts": {
+          "LOW": 2
+        },
+        "components": {
+          "classification_confidence": 0.8,
+          "coverage_depth": 0.4,
+          "field_type_diversity": 1.5,
+          "semantic_relevance": 2.8
+        },
+        "coverage_pass_fields": 2,
+        "field_type_counts": {
+          "MATRIX": 2
+        },
+        "score": 5.5,
+        "semantic_class_counts": {
+          "UNKNOWN": 2
+        }
+      },
+      "matched_text": "Price Volume",
+      "score": 42.834,
+      "selected": false
+    },
+    {
+      "components": {
+        "coverage_metadata": 6.565,
+        "field_evidence": 0.0,
+        "novelty": 5.0,
+        "semantic_hint": 28.0
+      },
+      "dataset_hint": "PRICE_VOLUME",
+      "dataset_hint_confidence": "HIGH",
+      "dataset_hint_source": "CATEGORY",
+      "dataset_id": "pv72",
+      "field_evidence": {
+        "classification_confidence_counts": {},
+        "components": {
+          "classification_confidence": 0.0,
+          "coverage_depth": 0.0,
+          "field_type_diversity": 0.0,
+          "semantic_relevance": 0.0
+        },
+        "coverage_pass_fields": 0,
+        "field_type_counts": {},
+        "score": 0.0,
+        "semantic_class_counts": {}
+      },
+      "matched_text": "Price Volume",
+      "score": 39.565,
+      "selected": false
+    }
+  ],
+  "dataset_exclusion_status": {
+    "model110": "MATCHED"
+  },
+  "datasets_available": 139,
+  "datasets_in_discovery_pool": 15,
+  "datasets_selected": 5,
+  "discovery_429_count": 26,
+  "discovery_http_methods": [
+    "GET"
+  ],
+  "discovery_http_status_counts": {
+    "200": 103,
+    "429": 26
+  },
+  "discovery_snapshot_id": "disc_20260815T140904823880Z_437d4e5e56",
+  "dry_run_id": "dry_20260815T140905222953Z",
+  "estimated_truncated_candidates": 360,
+  "field_type_counts": {
+    "MATRIX": 85
+  },
+  "fields_available": 3871,
+  "fields_coverage_pass": 2694,
+  "fields_selected": 85,
+  "initial_budget_truncated_candidates": 188,
+  "initial_candidate_estimate": 432,
+  "initial_candidates_selected": 72,
+  "initial_candidates_truncated": 360,
+  "initial_search_budget": 72,
+  "max_new_simulation_posts": 120,
+  "mode": "CANDIDATE_PLAN_ESTIMATE",
+  "network_mode": "ONLINE_READ_ONLY",
+  "new_post_budget_truncated_candidates": 140,
+  "operator_registry_summary": {
+    "by_class": {
+      "ADVANCED_OPERATOR": 5,
+      "CORE_VERIFIED_OPERATOR": 20
+    },
+    "by_status": {
+      "UNVERIFIED": 3,
+      "VERIFIED_PROJECT": 22
+    },
+    "total": 25
+  },
+  "priority_truncation_required": true,
+  "repair_budget_reserved": 48,
+  "repair_reserve_budget": 48,
+  "semantic_class_counts": {
+    "PRICE_LEVEL": 32,
+    "RETURN": 35,
+    "SPREAD_COST": 5,
+    "UNKNOWN": 9,
+    "VOLUME": 4
+  },
+  "source": "BRAIN_API_READ_ONLY",
+  "theme_settings_match": true,
+  "unallocated_simulation_budget": 0,
+  "unknown_classification_count": 9,
+  "writes_formal_candidates": false
+}

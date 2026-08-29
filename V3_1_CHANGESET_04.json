@@ -1,0 +1,30 @@
+{
+  "checkpoint": "V3.1-B2A",
+  "baseline": "V3.1-B1 / v3.0.4o",
+  "date": "2026-08-27",
+  "production_ready": false,
+  "added": [
+    "ppl_engine/continuous_check.py",
+    "ppl_engine/continuous_control.py",
+    "tests/test_v31_unattended_b2.py",
+    "V3_1_PROGRESS_04.md",
+    "V3_1_CHANGESET_04.json",
+    "V3_1_B2A_SHA256SUMS.txt"
+  ],
+  "changed": [
+    "ppl_engine/store.py",
+    "ppl_engine/continuous_policy.py",
+    "ppl_engine/round_orchestrator.py",
+    "ppl_engine/production_repair.py",
+    "ppl_round_v31.yaml"
+  ],
+  "safety": {
+    "machine_lib_modified": false,
+    "production_db_modified": false,
+    "worldquant_network_used": false,
+    "run_0005_modified": false,
+    "check_queue_get_only": true,
+    "duplicate_post_guard_preserved": true,
+    "global_db_failure_fail_closed": true
+  }
+}

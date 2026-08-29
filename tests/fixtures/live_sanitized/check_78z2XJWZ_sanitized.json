@@ -1,0 +1,10 @@
+{
+  "is": {
+    "checks": [
+      {
+        "name": "ALREADY_SUBMITTED",
+        "result": "FAIL"
+      }
+    ]
+  }
+}

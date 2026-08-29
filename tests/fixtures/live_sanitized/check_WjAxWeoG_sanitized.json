@@ -1,0 +1,189 @@
+{
+  "is": {
+    "checks": [
+      {
+        "limit": 1.58,
+        "name": "LOW_SHARPE",
+        "result": "FAIL",
+        "value": 1.17
+      },
+      {
+        "limit": 1.58,
+        "name": "CLUSTER_TEST",
+        "result": "WARNING",
+        "value": 0.72
+      },
+      {
+        "limit": 1.0,
+        "name": "LOW_FITNESS",
+        "result": "FAIL",
+        "value": 0.54
+      },
+      {
+        "limit": 1,
+        "name": "LOW_GLB_AMER_SHARPE",
+        "result": "FAIL",
+        "value": 0.6
+      },
+      {
+        "limit": 1,
+        "name": "LOW_GLB_EMEA_SHARPE",
+        "result": "FAIL",
+        "value": 0.27
+      },
+      {
+        "limit": 1,
+        "name": "LOW_GLB_APAC_SHARPE",
+        "result": "FAIL",
+        "value": 0.99
+      },
+      {
+        "limit": 0.01,
+        "name": "LOW_TURNOVER",
+        "result": "PASS",
+        "value": 0.608
+      },
+      {
+        "limit": 0.7,
+        "name": "HIGH_TURNOVER",
+        "result": "PASS",
+        "value": 0.608
+      },
+      {
+        "name": "CONCENTRATED_WEIGHT",
+        "result": "PASS"
+      },
+      {
+        "limit": 0.72,
+        "name": "LOW_SUB_UNIVERSE_SHARPE",
+        "result": "PASS",
+        "value": 1.08
+      },
+      {
+        "limit": 0.7,
+        "name": "SELF_CORRELATION",
+        "result": "PASS"
+      },
+      {
+        "name": "DATA_DIVERSITY",
+        "result": "PASS"
+      },
+      {
+        "limit": 0.7,
+        "name": "PROD_CORRELATION",
+        "result": "PASS",
+        "value": 0.5278
+      },
+      {
+        "limit": 4,
+        "name": "REGULAR_SUBMISSION",
+        "result": "PASS",
+        "value": 0
+      },
+      {
+        "limit": 0.2,
+        "name": "HT_TURNOVER",
+        "result": "PASS",
+        "value": 0.608
+      },
+      {
+        "limit": 0.75,
+        "name": "HT_HIGH_TURNOVER_RETURNS_RATIO",
+        "result": "PASS",
+        "value": 0.8224
+      },
+      {
+        "limit": 1.7,
+        "name": "HT_LIQUID_TOPDIV3000_SHARPE",
+        "result": "WARNING",
+        "value": 1.17
+      },
+      {
+        "limit": 2.0,
+        "name": "HT_INVESTABLE_MAX_TRADE_SHARPE",
+        "result": "WARNING",
+        "value": 0.88
+      },
+      {
+        "limit": 0.2,
+        "name": "HT_INVESTABLE_MAX_TRADE_TURNOVER",
+        "result": "PASS",
+        "value": 0.5317
+      },
+      {
+        "limit": 2.0,
+        "name": "HT_INVESTABLE_MAX_POSITION_SHARPE",
+        "result": "WARNING",
+        "value": 1.28
+      },
+      {
+        "limit": 0.2,
+        "name": "HT_INVESTABLE_MAX_POSITION_TURNOVER",
+        "result": "PASS",
+        "value": 0.6026
+      },
+      {
+        "limit": "RAM",
+        "name": "HT_ORTHOGONAL_RAM_NEUTRALIZATION",
+        "result": "WARNING",
+        "value": "Subindustry"
+      },
+      {
+        "limit": 1.58,
+        "name": "LOW_2Y_SHARPE",
+        "result": "FAIL",
+        "value": 0.97
+      },
+      {
+        "name": "MATCHES_CLASSIFICATION",
+        "result": "PASS",
+        "value": [
+          "High Turnover"
+        ]
+      },
+      {
+        "limit": 0.5,
+        "name": "POWER_POOL_CORRELATION",
+        "result": "WARNING",
+        "value": 0.8797
+      },
+      {
+        "competitions": [
+          {
+            "id": "GAC2026",
+            "name": "Global Alpha Competition 2026"
+          }
+        ],
+        "name": "MATCHES_COMPETITION",
+        "result": "PASS"
+      },
+      {
+        "effective": 1,
+        "multiplier": 1.0,
+        "name": "MATCHES_PYRAMID",
+        "pyramids": [
+          {
+            "multiplier": 1.0,
+            "name": "GLB/D1/PV"
+          }
+        ],
+        "result": "PASS"
+      },
+      {
+        "name": "OSMOSIS_ALLOCATION",
+        "result": "WARNING"
+      },
+      {
+        "name": "MATCHES_THEMES",
+        "result": "WARNING",
+        "themes": [
+          {
+            "id": "9BKPE8D",
+            "multiplier": 1.0,
+            "name": "GLB/D1 Power Pool Aug`26 2"
+          }
+        ]
+      }
+    ]
+  }
+}

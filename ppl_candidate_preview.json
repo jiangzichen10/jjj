@@ -1,0 +1,94 @@
+{
+  "cache_classification": {
+    "CACHE_COMPLETE": 3,
+    "CACHE_MISS": 69
+  },
+  "candidate_count_by_dataset": {
+    "intraday_pv_feats": 111,
+    "pv106": 35,
+    "pv30": 45,
+    "pv98": 109,
+    "techindi_model": 132
+  },
+  "discovery_snapshot_id": "disc_20260815T140904823880Z_437d4e5e56",
+  "dry_run_snapshot_id": "dry_20260815T142727773323Z",
+  "duplicate_candidate_ids": 0,
+  "duplicate_sim_keys": 0,
+  "eligible_initial_candidates": 432,
+  "execution_actions": {
+    "CACHE_RESTORE": 3,
+    "NEW_SIMULATION_REQUIRED": 69
+  },
+  "initial_budget": 72,
+  "initial_budget_consumed_if_executed": 69,
+  "initial_budget_remaining": 3,
+  "legacy_operator_count_distribution": {
+    "0": 11,
+    "1": 61
+  },
+  "mode": "CANDIDATE_EXECUTION_PREVIEW",
+  "network_requests": 0,
+  "planned_candidates_total": 432,
+  "pp_operator_count_distribution": {
+    "0": 11,
+    "1": 61
+  },
+  "repair_reserve_budget": 48,
+  "required_new_posts": 69,
+  "run_id": "run_0002",
+  "selected_count_by_dataset": {
+    "intraday_pv_feats": 5,
+    "pv106": 20,
+    "pv30": 11,
+    "pv98": 11,
+    "techindi_model": 25
+  },
+  "selected_count_by_field": {
+    "average_spread_slippage": 4,
+    "high_price_current_day_lagged_2": 2,
+    "max_trade_volume_30m_pre_close_2": 3,
+    "mean_price_modulo_100_ratio_60m_pre_close_2": 1,
+    "min_last_trade_price_30m_pre_close_2": 1,
+    "pca_industry_grouping_method4_50": 1,
+    "predicted_first_quantile_five_day_return_3": 4,
+    "predicted_first_quantile_one_day_return_2": 4,
+    "predicted_first_quantile_one_day_return_5": 4,
+    "predicted_first_quantile_one_day_return_tech1_1": 4,
+    "predicted_first_quantile_ten_day_return": 1,
+    "predicted_first_quantile_ten_day_return_24": 4,
+    "predicted_first_quantile_ten_day_return_4": 4,
+    "top1500_pca_factor1_grouping50": 2,
+    "top1500_pca_factor3_grouping5": 2,
+    "top2000_factor1_group50_score": 3,
+    "top2000_factor4_group10_score": 2,
+    "top2000_factor4_group5_score": 1,
+    "transaction_cost_estimate": 4,
+    "transaction_cost_maximum": 4,
+    "transaction_cost_median": 4,
+    "transaction_cost_percentile_25": 4,
+    "volume_current_day_lagged_0": 3,
+    "volume_current_day_lagged_1": 3,
+    "volume_current_day_lagged_2": 3
+  },
+  "selected_count_by_semantic_class": {
+    "PRICE_LEVEL": 4,
+    "RETURN": 36,
+    "SPREAD_COST": 20,
+    "VOLUME": 12
+  },
+  "selected_count_by_transform": {
+    "RANK": 11,
+    "RAW": 11,
+    "TS_DELTA": 14,
+    "TS_MEAN": 10,
+    "TS_RANK": 16,
+    "TS_ZSCORE": 4,
+    "ZSCORE": 6
+  },
+  "selected_for_initial_search": 72,
+  "simulation_posts": 0,
+  "snapshot_mismatch": false,
+  "structure_rejected": 0,
+  "truncated_by_initial_budget": 360,
+  "unused_initial_budget": 0
+}

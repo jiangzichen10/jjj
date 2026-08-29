@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "source": "USER_CONFIRMED_RESEARCH_EVIDENCE",
+  "note": "Research evidence confirmed by the user from live BRAIN results. It is not an automatically reconciled V2.2 DB fact and must not drive Production state-machine stop decisions by itself.",
+  "evidence": [
+    {
+      "evidence_id": "ev_ht_neutralization_market_rk2zvl93",
+      "source": "USER_CONFIRMED_EVIDENCE",
+      "parent_signal_family": "techindi_model/predicted_first_quantile_one_day_return_2/IDENTITY/NORMAL/TS_MEAN",
+      "parent_expression": "ts_mean(predicted_first_quantile_one_day_return_2, 2)",
+      "target_failure": "HT_RETURNS_RATIO_FAIL",
+      "strategy": "NEUTRALIZATION_MICRO_TUNE",
+      "parameter_change": {
+        "neutralization": "SUBINDUSTRY -> MARKET",
+        "decay": "0 -> 0"
+      },
+      "control_note": "Expression and Decay=0 were held constant; the clean observed setting change was Neutralization SUBINDUSTRY -> MARKET.",
+      "parent_alpha_id": "ZYEVroY0",
+      "child_alpha_id": "rK2ZVL93",
+      "parent_value": 0.7374,
+      "child_value": 0.7732,
+      "live_limit": 0.75,
+      "delta": 0.0358,
+      "verdict": "TARGET_PASS",
+      "parent_sharpe": 2.42,
+      "child_sharpe": 2.15,
+      "sharpe_delta": -0.27,
+      "parent_fitness": 1.18,
+      "child_fitness": 1.18,
+      "fitness_delta": 0.0,
+      "parent_turnover": 0.6249,
+      "child_turnover": 0.62,
+      "turnover_delta": -0.0049,
+      "child_returns": 0.1874,
+      "sub_universe": 1.66,
+      "sub_universe_limit": 1.32,
+      "sub_universe_outcome": "PASS",
+      "classifications": [
+        "High Turnover",
+        "Investable High Turnover"
+      ],
+      "theme": "GLB/D1 Power Pool Aug`26 2",
+      "submission_status": "USER_CONFIRMED_SUBMITTED",
+      "priority_hint": "SETTINGS_MICRO_TUNE",
+      "note": "Clean family-specific control: SUBINDUSTRY+Decay0 HT 0.7374 -> MARKET+Decay0 HT 0.7732 PASS. This is a priority hint, not a global rule and not a system-confirmed workflow fact."
+    }
+  ]
+}

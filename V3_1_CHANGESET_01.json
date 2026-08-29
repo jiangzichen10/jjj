@@ -1,0 +1,16 @@
+{
+  "added": [
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md",
+    "V3_1_PROGRESS_01.md",
+    "ppl_engine/continuous_policy.py",
+    "ppl_engine/scheduler.py",
+    "ppl_engine/strategy_contracts.py",
+    "ppl_plan_v31.yaml",
+    "ppl_round_v31.yaml",
+    "tests/test_v31_foundation.py"
+  ],
+  "changed": [
+    "ppl_engine/round_orchestrator.py"
+  ],
+  "removed": []
+}

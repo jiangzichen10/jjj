@@ -1,0 +1,1 @@
+{"evidence_source":"SYNTHETIC_TEST","candidate":{"candidate_id":"u","lifecycle_state":"PRE_TAG_FINALIST","field_id":"x123","data_fields_used":["x123"],"semantic_class":"UNKNOWN","expression":"rank(x123)","direction":"NORMAL","transform_family":"RANK","vector_reducer":"IDENTITY"},"field_metadata":{"source":"SYNTHETIC_TEST","description":""}}

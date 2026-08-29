@@ -1,0 +1,35 @@
+﻿# Credentials
+credentials.txt
+account.txt
+brain_credentials.txt
+账号密码.txt
+账户密码.txt
+.env
+.env.*
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime
+ppl_runner.lock
+*.lock
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Archives / backups
+*.zip
+backup/
+backups/

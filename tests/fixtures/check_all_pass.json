@@ -1,0 +1,9 @@
+{"evidence_source":"SYNTHETIC_TEST","phase":"FINAL","is":{"checks":[
+ {"name":"POWER_POOL_SHARPE","result":"PASS","value":1.2,"limit":1.0,"unit":"ratio"},
+ {"name":"POWER_POOL_TURNOVER","result":"PASS","value":0.5,"limit":0.7,"unit":"fraction"},
+ {"name":"OPERATOR_COUNT","result":"PASS","value":3,"limit":8,"unit":"count"},
+ {"name":"DATA_FIELD_COUNT","result":"PASS","value":1,"limit":3,"unit":"count"},
+ {"name":"SUB_UNIVERSE","result":"PASS"},{"name":"POWER_POOL_CORRELATION","result":"PASS","value":0.3,"limit":0.5,"unit":"ratio"},
+ {"name":"HIGH_TURNOVER","result":"PASS"},{"name":"HIGH_TURNOVER_RETURNS_RATIO","result":"PASS","value":0.8,"limit":0.75,"unit":"ratio"},
+ {"name":"CLASSIFICATION_HIGH_TURNOVER","result":"PASS"},{"name":"THEME_MATCH","result":"PASS"}
+]}}

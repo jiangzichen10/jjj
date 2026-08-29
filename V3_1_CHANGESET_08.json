@@ -1,0 +1,52 @@
+{
+  "checkpoint": "V3.1-C3",
+  "date": "2026-08-28",
+  "status": "OFFLINE_COMPLETE",
+  "baseline": "V3.1-C2",
+  "new_files": [
+    "ppl_engine/policy_runtime.py",
+    "tests/test_v31_policy_reload_c3.py",
+    "V3_1_PROGRESS_08.md",
+    "V3_1_CHANGESET_08.json"
+  ],
+  "modified_files": [
+    "ppl_engine/qualification_policy.py",
+    "ppl_engine/round_store.py",
+    "ppl_engine/round_orchestrator.py",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "behavioral_changes": [
+    "Qualification policy has a durable active version/hash/payload for Continuous runs",
+    "Qualification-only YAML edits activate only at a no-unfinished-batch safe checkpoint before new allocation",
+    "Restart/recovery restores the durable active Qualification payload before classification",
+    "Changed Qualification semantics require an explicit policy-version bump",
+    "Non-Qualification drift is rejected by the C3 controller without replacing the last known-good policy",
+    "Successful reload emits durable from/to version/hash attribution and does not affect Simulation identity",
+    "Repeated identical rejected candidate policies are telemetry-idempotent"
+  ],
+  "explicit_non_changes": [
+    "No PPL business threshold change",
+    "No two-year Sharpe qualification rule",
+    "No Search ranking behavior change",
+    "No Repair planning behavior change",
+    "No adaptive Search/Repair arbitration",
+    "No Search/Repair/Scheduler hot reload",
+    "No machine_lib_V2_1.py change",
+    "No live WorldQuant request"
+  ],
+  "validation": {
+    "tests_collected": 897,
+    "sanitized_runnable_passed": 882,
+    "sanitized_runnable_failed": 0,
+    "production_db_bound_not_runnable": 15,
+    "compatibility_passed": 247,
+    "phase_passed": 320,
+    "production_remote_repair_passed": 149,
+    "v31_group_passed": 83,
+    "v3_round_orchestrator_passed": 83,
+    "compileall": "PASS"
+  },
+  "machine_lib_sha256": "58634f1eb01880edc88b7d9904edf3716335c35c17d57aaa0215985d82fa34e4",
+  "production_ready": false,
+  "next": "V3.1-D1 adaptive Search/Repair scheduler compatibility/shadow rollout"
+}

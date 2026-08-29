@@ -1,0 +1,437 @@
+schema_version: 1
+project_version: v3.1
+objective: MAXIMIZE_DISTINCT_PPL_READY_SIGNAL_FAMILIES
+continuous:
+  lifecycle_mode: CONTINUOUS
+  global_budget_mode: STATISTICS_ONLY
+  startup_reconcile_before_new_post: true
+  poll_remote_without_blocking_worker: true
+  recoverable_failures_wait: true
+  scheduler_fairness_enabled: true
+  safe_checkpoint_policy_reload: true
+  allow_search_pool_expansion: false
+  default_max_batches: null
+  idle_wait_seconds: 30
+  remote_poll_interval_seconds: 5
+  remote_poll_max_per_cycle: 4
+  network_backoff_initial_seconds: 30
+  network_backoff_max_seconds: 300
+  check_queue_enabled: true
+  check_poll_interval_seconds: 10
+  check_poll_max_per_cycle: 4
+  discovery_queue_enabled: true
+  discovery_poll_interval_seconds: 10
+  discovery_poll_max_per_cycle: 1
+  discovery_failure_cooldown_seconds: 300
+  manual_finalization_check_queue_enabled: true
+  auth_retry_seconds: 60
+  due_sleep_max_seconds: 300
+batch_size: 40
+exploration_fraction: 0.3
+family_success_state: PRE_TAG_CHECK_PASS
+protect_user_confirmed_submitted: true
+normal_near_pass_repair_cap_per_family: 1
+strong_near_pass_repair_cap_per_family: 2
+stop_when_no_safe_candidate: false
+report_dir: reports
+winner_policy:
+  fitness_first: true
+  prefer_simpler_expression: true
+  minimum_material_improvement: 0.01
+telemetry:
+  enabled: true
+  record_candidate_decisions: true
+  record_all_discovered_candidates: true
+  record_events: true
+  record_simulation_ledger: true
+  record_batch_snapshots: true
+  export_legacy_flat_reports: true
+  export_research_bundle_each_batch: true
+rolling_discovery:
+  enabled: false
+  refresh_every_search_batches: 5
+  min_search_batches_before_refresh: 5
+  max_refreshes: null
+  probe_new_datasets_per_refresh: 6
+  admit_new_datasets_per_refresh: 3
+  min_active_datasets: 10
+  low_pool_trigger_families: 80
+  low_pool_min_batches_since_refresh: 2
+  cooldown_min_attempts: 8
+  cooldown_checked_rate_max: 0.1
+  cooldown_viable_rate_max: 0.1
+  cooldown_without_admission: true
+  max_cooldown_per_refresh: 3
+  preserve_success_datasets: true
+  never_revisit_dataset_within_round: false
+adaptive_ranking:
+  prior_initial_scale: 0.3
+  prior_min_scale: 0.12
+  prior_half_life_attempts: 8.0
+  evidence_shrinkage_attempts: 10.0
+  exploration_evidence_fraction: 0.2
+  exploration_novelty_weight: 10.0
+  terminal_fail_penalty: 32.0
+  zero_viable_penalty: 8.0
+  zero_viable_min_attempts: 4
+  recent_zero_positive_min_attempts: 8
+  recent_zero_positive_penalty: 18.0
+  recent_zero_positive_consecutive_batches_cooldown: 2
+  exploit_min_combo_attempts: 2
+  exploit_min_combo_viable: 1
+  search_positive_sharpe_min: 1.6
+  search_strong_sharpe_min: 2.0
+  search_elite_sharpe_min: 3.0
+  repair_good_sharpe_min: 2.0
+  repair_elite_sharpe_min: 3.0
+  repair_turnover_near_max: 0.8
+  repair_turnover_mid_max: 1.0
+  direction_repair_positive_abs_sharpe_min: 1.6
+  direction_repair_strong_abs_sharpe_min: 2.0
+  direction_repair_elite_abs_sharpe_min: 3.0
+  max_unproven_dataset_fraction: 0.15
+  max_unproven_combo_per_batch: 4
+  dimension_weights:
+    dataset: 0.1
+    operator: 0.2
+    dataset_operator: 0.35
+    operator_window: 0.15
+    dataset_operator_window: 0.2
+  stage_weights:
+    signal_viable: 0.0
+    local_pass: 0.0
+    fixed_repairable: 0.0
+    search_viable: 22.0
+    search_strong: 14.0
+    search_elite: 24.0
+    repair_viable: 0.0
+    repair_elite: 0.0
+    pretag_resolved: 10.0
+    ppl_near_pass: 35.0
+    ppl_strong_near_pass: 55.0
+    ppl_success: 100.0
+search_policy:
+  schema: V31_SEARCH_POLICY_V1
+  mode: LEGACY_PARITY
+  allocation:
+    batch_size: 40
+    exploration_fraction: 0.3
+  ranking:
+    prior_initial_scale: 0.3
+    prior_min_scale: 0.12
+    prior_half_life_attempts: 8.0
+    evidence_shrinkage_attempts: 10.0
+    exploration_evidence_fraction: 0.2
+    exploration_novelty_weight: 10.0
+    terminal_fail_penalty: 32.0
+    zero_viable_penalty: 8.0
+    zero_viable_min_attempts: 4
+    recent_zero_positive_min_attempts: 8
+    recent_zero_positive_penalty: 18.0
+    recent_zero_positive_consecutive_batches_cooldown: 2
+    exploit_min_combo_attempts: 2
+    exploit_min_combo_viable: 1
+    search_positive_sharpe_min: 1.6
+    search_strong_sharpe_min: 2.0
+    search_elite_sharpe_min: 3.0
+    max_unproven_dataset_fraction: 0.15
+    max_unproven_combo_per_batch: 4
+    dimension_weights:
+      dataset: 0.1
+      operator: 0.2
+      dataset_operator: 0.35
+      operator_window: 0.15
+      dataset_operator_window: 0.2
+    stage_weights:
+      signal_viable: 0.0
+      local_pass: 0.0
+      fixed_repairable: 0.0
+      search_viable: 22.0
+      search_strong: 14.0
+      search_elite: 24.0
+      pretag_resolved: 10.0
+      ppl_near_pass: 35.0
+      ppl_strong_near_pass: 55.0
+      ppl_success: 100.0
+  diversity:
+    max_dataset_fraction: 0.35
+    max_semantic_class_fraction: 0.5
+    max_initial_candidates_per_field: 4
+repair_policy:
+  schema: V31_REPAIR_POLICY_V1
+  mode: LEGACY_PARITY
+  allocation:
+    batch_size: 40
+  ranking:
+    repair_good_sharpe_min: 2.0
+    repair_elite_sharpe_min: 3.0
+    repair_turnover_near_max: 0.8
+    repair_turnover_mid_max: 1.0
+    direction_repair_positive_abs_sharpe_min: 1.6
+    direction_repair_strong_abs_sharpe_min: 2.0
+    direction_repair_elite_abs_sharpe_min: 3.0
+  planning:
+    normal_near_pass_repair_cap_per_family: 1
+    strong_near_pass_repair_cap_per_family: 2
+strategy_integration:
+  enabled: true
+  mode: PHASE_COMPATIBILITY
+  search_adapter: LEGACY_SEARCH_SELECTOR_COMPAT
+  repair_adapter: LEGACY_REPAIR_SELECTOR_COMPAT
+  scheduler_gate: V31_SCHEDULER_CONTRACT
+scheduler_shadow:
+  enabled: true
+  mode: SHADOW_ONLY
+  policy_version: V31_SCHED_SHADOW_003
+  productivity_windows: [100, 500]
+  short_window_weight: 0.65
+  long_window_weight: 0.35
+  backlog_weight: 8.0
+  backlog_scale: 20.0
+  aging_score_per_minute: 0.10
+  max_aging_bonus: 12.0
+  cold_start_attempts: 20
+  cold_start_bonus: 6.0
+  max_consecutive_same_action: 4
+  fairness_penalty: 15.0
+scheduler_evidence:
+  enabled: true
+  mode: EVIDENCE_ONLY
+  evidence_policy_version: V31_SCHED_EVIDENCE_002
+  replay_repetitions: 5
+  activation_thresholds:
+    # D2 intentionally does not invent activation sample thresholds.
+    # These remain unset until enough Shadow evidence exists to justify them.
+    minimum_observations: null
+    minimum_search_samples: null
+    minimum_repair_samples: null
+research_run:
+  # V3.1-D2E real-platform evidence/control run. This identity is durable
+  # and immutable for run_0006: Adaptive Scheduler can observe but never act.
+  mode: COMPATIBILITY_EVIDENCE
+  expected_run_id: run_0006
+  scheduler_authority: PHASE_COMPATIBILITY
+  scheduler_shadow: SHADOW_ONLY
+  adaptive_control: DISABLED
+  authority_transition_allowed: false
+  automatic_evidence_stop: false
+  # Pre-registered maturation semantics: evidence matures by durable state,
+  # not by an arbitrary elapsed-minute threshold. Long-running work remains
+  # right-censored until a resolved/terminal durable outcome exists.
+  maturation_semantics: STATE_RESOLVED
+  long_running_semantics: RIGHT_CENSORED_UNTIL_RESOLVED
+qualification_integration:
+  enabled: true
+  mode: LEGACY_PARITY
+  evaluator: DECLARATIVE_COMPAT
+  policy_version: V31_QUAL_COMPAT_002
+  # Rule values are resolved from ppl_classification below so there is one
+  # authoritative value per current business rule. No hypothetical rule is preloaded.
+  rules:
+  - id: SIMULATION_COMPLETE
+    role: LOCAL_QUALIFICATION_RULE
+    source: CANDIDATE
+    fact: simulation_status
+    operator: EQ
+    expected: COMPLETE
+    on_missing: UNRESOLVED
+    effect: PREREQUISITE
+  - id: STRUCTURE_VALID
+    role: LOCAL_QUALIFICATION_RULE
+    source: CANDIDATE
+    fact: structure_status
+    operator: NE
+    expected: INVALID
+    default: ELIGIBLE
+    on_missing: UNRESOLVED
+    failure_code: STRUCTURAL_INVALID
+    effect: TERMINAL
+  - id: PPL_SHARPE_MIN
+    role: PLATFORM_HARD_RULE
+    source: METRIC
+    fact: sharpe
+    operator: GE
+    threshold_from: fixed_gates.sharpe_min
+    on_missing: UNRESOLVED
+    failure_code: SHARPE_BELOW_PPL_MIN
+    effect: TERMINAL
+  - id: PPL_TURNOVER_MIN
+    role: PLATFORM_HARD_RULE
+    source: METRIC
+    fact: turnover
+    operator: GE
+    threshold_from: fixed_gates.turnover_min
+    on_missing: UNRESOLVED
+    failure_code: TURNOVER_BELOW_BASE_MIN
+    repairable: true
+    effect: REPAIRABLE
+  - id: PPL_TURNOVER_MAX
+    role: PLATFORM_HARD_RULE
+    source: METRIC
+    fact: turnover
+    operator: LE
+    threshold_from: fixed_gates.turnover_max
+    on_missing: UNRESOLVED
+    failure_code: TURNOVER_ABOVE_BASE_MAX
+    repairable: true
+    effect: REPAIRABLE
+  - id: PPL_SUB_UNIVERSE
+    role: PLATFORM_HARD_RULE
+    source: CHECK_OUTCOME
+    names_from: fixed_gates.sub_universe_checks
+    pass_outcomes: [PASS, NOT_APPLICABLE]
+    on_missing: UNRESOLVED
+    failure_code: SUB_UNIVERSE_FAIL
+    repairable: true
+    effect: REPAIRABLE
+  - id: PPL_POWER_POOL_CORRELATION
+    role: PLATFORM_HARD_RULE
+    source: CHECK_OUTCOME
+    names_from: fixed_gates.power_pool_correlation_checks
+    pass_outcomes: [PASS, NOT_APPLICABLE]
+    on_missing: UNRESOLVED
+    failure_code: PP_CORRELATION_FAIL
+    repairable: true
+    effect: REPAIRABLE
+  - id: ACTIVE_THEME_MATCH
+    role: PLATFORM_HARD_RULE
+    source: CHECK_OUTCOME
+    name_from: final_theme_check
+    aliases: [THEME_MATCH]
+    pass_outcomes: [PASS]
+    on_missing: UNRESOLVED
+    effect: THEME_OUTCOME
+  - id: OPERATOR_COUNT_INSURANCE
+    role: DIAGNOSTIC_WARNING
+    source: CANDIDATE
+    fact: pp_total_operator_count_estimate
+    operator: LE
+    threshold_from: fixed_gates.operator_count_max
+    on_missing: NOT_APPLICABLE
+    failure_code: OPERATOR_COUNT_ABOVE_MAX
+    effect: DIAGNOSTIC_ONLY
+  - id: DATA_FIELD_COUNT_INSURANCE
+    role: DIAGNOSTIC_WARNING
+    source: CANDIDATE
+    fact: data_field_count_estimate
+    operator: LE
+    threshold_from: fixed_gates.data_field_count_max
+    on_missing: NOT_APPLICABLE
+    failure_code: DATA_FIELD_COUNT_ABOVE_MAX
+    effect: DIAGNOSTIC_ONLY
+  - id: MANUAL_DESCRIPTION_PENDING
+    role: LOCAL_QUALIFICATION_RULE
+    source: CHECK_PENDING_GROUP
+    names_from: manual_finalization.description_checks
+    pass_outcomes: [PASS, NOT_APPLICABLE]
+    on_missing: NOT_APPLICABLE
+    effect: MANUAL_FINALIZATION_WORKFLOW
+  - id: PPC_STRATEGY_BAND
+    role: LOCAL_STRATEGY_RULE
+    source: CHECK_VALUE_BAND
+    names_from: fixed_gates.power_pool_correlation_checks
+    clean_max_from: manual_finalization.ppc_strategy.clean_max
+    mid_max_from: manual_finalization.ppc_strategy.mid_max
+    on_missing: UNRESOLVED
+    failure_code: PPC_AT_OR_ABOVE_STRATEGY_MAX
+    effect: LOCAL_STRATEGY
+  - id: PPC_MID_SHARPE
+    role: LOCAL_STRATEGY_RULE
+    source: DERIVED_RULE
+    fact: sharpe
+    operator: GT
+    threshold_from: manual_finalization.ppc_strategy.mid_min_sharpe
+    depends_on: PPC_STRATEGY_BAND
+    metadata_key: band
+    when_metadata_value: MID
+    on_missing: UNRESOLVED
+    failure_code: MID_PPC_REQUIRES_SHARPE_GT_2
+    effect: LOCAL_STRATEGY
+  - id: NON_PPL_DIAGNOSTICS
+    role: DIAGNOSTIC_WARNING
+    source: CHECK_DIAGNOSTIC_SET
+    names_from: non_ppl_diagnostics
+    pass_outcomes: [PASS, NOT_APPLICABLE]
+    on_missing: NOT_APPLICABLE
+    effect: DIAGNOSTIC_ONLY
+policy_versions:
+  qualification: V31_QUAL_COMPAT_002
+  search: V31_SEARCH_COMPAT_001
+  scheduler: V31_SCHED_001
+  ranking: V3_RANK_005
+  winner: V3_WINNER_001
+  allocation: V3_ALLOC_003
+  dataset_discovery: V3_DATASET_002
+  repair: V3_REPAIR_003
+  family: V3_FAMILY_001
+  telemetry: V3_TELEMETRY_003
+  ppl_classification: V3_PPL_CLASS_004
+ppl_classification:
+  fixed_gates:
+    sharpe_min: 1.0
+    turnover_min: 0.01
+    turnover_max: 0.7
+    operator_count_max: 8
+    data_field_count_max: 3
+    sub_universe_checks:
+    - LOW_SUB_UNIVERSE_SHARPE
+    - SUB_UNIVERSE
+    power_pool_correlation_checks:
+    - POWER_POOL_CORRELATION
+  theme_specific:
+    theme_name: GLB/D1 Liquid Power Pool Aug`26
+    required_settings:
+      region: GLB
+      delay: 1
+      universe: TOPDIV3000
+    excluded_datasets:
+    - model110
+    repair_signals: {}
+    capture_prefixes:
+    - HT_
+    observe_only:
+    - MATCHES_CLASSIFICATION
+    - HT_TURNOVER
+    - HT_HIGH_TURNOVER_RETURNS_RATIO
+    valid_until: '2026-09-30'
+  final_theme_check: MATCHES_THEMES
+  non_ppl_diagnostics:
+  - LOW_GLB_AMER_SHARPE
+  - LOW_GLB_EMEA_SHARPE
+  - LOW_GLB_APAC_SHARPE
+  - PROD_CORRELATION
+  - SELF_CORRELATION
+  - LOW_FITNESS
+  - FITNESS
+  - LOW_2Y_SHARPE
+  - TWO_YEAR_SHARPE
+  - CLUSTER_TEST
+  - OSMOSIS_ALLOCATION
+  - MATCHES_COMPETITION
+  - MATCHES_PYRAMID
+  - REGULAR_SUBMISSION
+  - CONCENTRATED_WEIGHT
+  - DATA_DIVERSITY
+  automation_ignored:
+  - POWER_POOL_DESCRIPTION_LENGTH
+  - POWER_POOL_DESCRIPTION_FORMAT
+  - PURE_POWER_POOL_THEME
+  repair_priority:
+    high_gap_max: 0.05
+    medium_gap_max: 0.1
+  manual_finalization:
+    enabled: true
+    description_checks:
+    - POWER_POOL_DESCRIPTION_LENGTH
+    - POWER_POOL_DESCRIPTION_FORMAT
+    pretag_theme_outcomes:
+    - WARNING
+    - PENDING
+    auto_generate_description: true
+    platform_property_write: false
+    manual_action: COPY_DESCRIPTION_SAVE_AND_CHECK_SUBMISSION
+    auto_refresh_every_batches: 10
+    ppc_strategy:
+      clean_max: 0.50
+      mid_max: 0.65
+      mid_min_sharpe: 2.00

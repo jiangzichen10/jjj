@@ -1,0 +1,1 @@
+{"evidence_source":"SYNTHETIC_TEST","phase":"PRE_TAG","is":{"checks":[{"name":"MYSTERY_NEW_CHECK","result":"FAIL"},{"name":"PROD_CORRELATION","result":"FAIL"}]}}

@@ -1,0 +1,21 @@
+{
+  "evidence_source":"MANUAL_CAPTURED_CHECK",
+  "alpha_id":"WjAxWeoG",
+  "phase":"FINAL",
+  "facts":{
+    "sharpe":1.17,
+    "turnover":0.6080,
+    "theme_root_cause":"UNKNOWN"
+  },
+  "checks":[
+    {"name":"HIGH_TURNOVER","result":"PASS"},
+    {"name":"HIGH_TURNOVER_RETURNS_RATIO","result":"PASS","value":0.8224,"limit":0.75,"unit":"ratio","unitConfidence":"HIGH"},
+    {"name":"POWER_POOL_CORRELATION","result":"FAIL","value":0.8797,"limit":0.5,"unit":"ratio","unitConfidence":"HIGH"},
+    {"name":"THEME_MATCH","result":"NOT MATCH"},
+    {"name":"SHARPE","result":"FAIL","value":1.17,"limit":1.58,"unit":"ratio"},
+    {"name":"FITNESS","result":"FAIL","value":0.54,"limit":1.0,"unit":"ratio"},
+    {"name":"REGION_SHARPE","result":"FAIL"},
+    {"name":"TWO_YEAR_SHARPE","result":"FAIL"},
+    {"name":"CLUSTER","result":"WARNING"}
+  ]
+}

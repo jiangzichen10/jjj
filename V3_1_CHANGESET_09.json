@@ -1,0 +1,53 @@
+{
+  "checkpoint": "V3.1-D1",
+  "date": "2026-08-28",
+  "status": "OFFLINE_COMPLETE",
+  "baseline": "V3.1-C3",
+  "new_files": [
+    "ppl_engine/scheduler_shadow.py",
+    "tests/test_v31_scheduler_shadow_d1.py",
+    "V3_1_PROGRESS_09.md",
+    "V3_1_D1_TEST_MATRIX.txt",
+    "V3_1_CHANGESET_09.json"
+  ],
+  "modified_files": [
+    "ppl_engine/round_orchestrator.py",
+    "ppl_round_v31.yaml",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "behavioral_changes": [
+    "A pure adaptive Search-vs-Repair scheduler now runs in SHADOW_ONLY mode for Continuous Search/Repair decisions",
+    "Shadow productivity uses latest 100/500 paid NEW_POST Search and Repair ledger observations",
+    "Shadow scoring includes productivity, backlog pressure, queue aging, cold-start exploration, fairness and remote-slot capacity",
+    "Every shadow decision is durably attributed with actual/shadow action, agreement, policy versions and productivity inputs",
+    "Shadow event identity is bound to the selected candidate/repair-plan fingerprint",
+    "Search and Repair batch reports include scheduler_shadow attribution"
+  ],
+  "explicit_non_changes": [
+    "PHASE_COMPATIBILITY remains authoritative",
+    "Shadow decisions do not alter actual Search/Repair execution",
+    "No Search ranking behavior change",
+    "No Repair planning behavior change",
+    "No Qualification business-rule change",
+    "No two-year Sharpe qualification rule",
+    "No SimulationSpec or sim_key change",
+    "No machine_lib_V2_1.py change",
+    "No live WorldQuant request"
+  ],
+  "validation": {
+    "tests_collected": 903,
+    "sanitized_runnable_passed": 888,
+    "sanitized_runnable_failed": 0,
+    "production_db_bound_not_runnable": 15,
+    "compatibility_passed": 247,
+    "phase_passed": 320,
+    "production_remote_repair_passed": 149,
+    "v31_group_passed": 89,
+    "v3_round_orchestrator_passed": 83,
+    "d1_specific_passed": 6,
+    "compileall": "PASS"
+  },
+  "machine_lib_sha256": "58634f1eb01880edc88b7d9904edf3716335c35c17d57aaa0215985d82fa34e4",
+  "production_ready": false,
+  "next": "V3.1-D2 adaptive scheduler evidence gate and authoritative rollout design; do not activate before shadow evidence/replay/fallback validation"
+}

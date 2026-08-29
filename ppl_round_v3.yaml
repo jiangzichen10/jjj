@@ -1,0 +1,165 @@
+schema_version: 1
+project_version: v3
+objective: MAXIMIZE_DISTINCT_PPL_READY_SIGNAL_FAMILIES
+batch_size: 40
+exploration_fraction: 0.3
+family_success_state: PRE_TAG_CHECK_PASS
+protect_user_confirmed_submitted: true
+normal_near_pass_repair_cap_per_family: 1
+strong_near_pass_repair_cap_per_family: 2
+stop_when_no_safe_candidate: true
+report_dir: reports
+winner_policy:
+  fitness_first: true
+  prefer_simpler_expression: true
+  minimum_material_improvement: 0.01
+telemetry:
+  enabled: true
+  record_candidate_decisions: true
+  record_all_discovered_candidates: true
+  record_events: true
+  record_simulation_ledger: true
+  record_batch_snapshots: true
+  export_legacy_flat_reports: true
+  export_research_bundle_each_batch: true
+rolling_discovery:
+  enabled: true
+  refresh_every_search_batches: 5
+  min_search_batches_before_refresh: 5
+  max_refreshes: 12
+  probe_new_datasets_per_refresh: 6
+  admit_new_datasets_per_refresh: 3
+  min_active_datasets: 10
+  low_pool_trigger_families: 80
+  low_pool_min_batches_since_refresh: 2
+  cooldown_min_attempts: 8
+  cooldown_checked_rate_max: 0.1
+  cooldown_viable_rate_max: 0.1
+  cooldown_without_admission: true
+  max_cooldown_per_refresh: 3
+  preserve_success_datasets: true
+  never_revisit_dataset_within_round: true
+adaptive_ranking:
+  prior_initial_scale: 0.3
+  prior_min_scale: 0.12
+  prior_half_life_attempts: 8.0
+  evidence_shrinkage_attempts: 10.0
+  exploration_evidence_fraction: 0.2
+  exploration_novelty_weight: 10.0
+  terminal_fail_penalty: 32.0
+  zero_viable_penalty: 8.0
+  zero_viable_min_attempts: 4
+  recent_zero_positive_min_attempts: 8
+  recent_zero_positive_penalty: 18.0
+  recent_zero_positive_consecutive_batches_cooldown: 2
+  exploit_min_combo_attempts: 2
+  exploit_min_combo_viable: 1
+  search_positive_sharpe_min: 1.6
+  search_strong_sharpe_min: 2.0
+  search_elite_sharpe_min: 3.0
+  repair_good_sharpe_min: 2.0
+  repair_elite_sharpe_min: 3.0
+  repair_turnover_near_max: 0.8
+  repair_turnover_mid_max: 1.0
+  direction_repair_positive_abs_sharpe_min: 1.6
+  direction_repair_strong_abs_sharpe_min: 2.0
+  direction_repair_elite_abs_sharpe_min: 3.0
+  max_unproven_dataset_fraction: 0.15
+  max_unproven_combo_per_batch: 4
+  dimension_weights:
+    dataset: 0.1
+    operator: 0.2
+    dataset_operator: 0.35
+    operator_window: 0.15
+    dataset_operator_window: 0.2
+  stage_weights:
+    signal_viable: 0.0
+    local_pass: 0.0
+    fixed_repairable: 0.0
+    search_viable: 22.0
+    search_strong: 14.0
+    search_elite: 24.0
+    repair_viable: 0.0
+    repair_elite: 0.0
+    pretag_resolved: 10.0
+    ppl_near_pass: 35.0
+    ppl_strong_near_pass: 55.0
+    ppl_success: 100.0
+policy_versions:
+  ranking: V3_RANK_005
+  winner: V3_WINNER_001
+  allocation: V3_ALLOC_003
+  dataset_discovery: V3_DATASET_002
+  repair: V3_REPAIR_003
+  family: V3_FAMILY_001
+  telemetry: V3_TELEMETRY_003
+  ppl_classification: V3_PPL_CLASS_004
+ppl_classification:
+  fixed_gates:
+    sharpe_min: 1.0
+    turnover_min: 0.01
+    turnover_max: 0.7
+    operator_count_max: 8
+    data_field_count_max: 3
+    sub_universe_checks:
+    - LOW_SUB_UNIVERSE_SHARPE
+    - SUB_UNIVERSE
+    power_pool_correlation_checks:
+    - POWER_POOL_CORRELATION
+  theme_specific:
+    theme_name: GLB/D1 Liquid Power Pool Aug`26
+    required_settings:
+      region: GLB
+      delay: 1
+      universe: TOPDIV3000
+    excluded_datasets:
+    - model110
+    repair_signals: {}
+    capture_prefixes:
+    - HT_
+    observe_only:
+    - MATCHES_CLASSIFICATION
+    - HT_TURNOVER
+    - HT_HIGH_TURNOVER_RETURNS_RATIO
+    valid_until: '2026-09-30'
+  final_theme_check: MATCHES_THEMES
+  non_ppl_diagnostics:
+  - LOW_GLB_AMER_SHARPE
+  - LOW_GLB_EMEA_SHARPE
+  - LOW_GLB_APAC_SHARPE
+  - PROD_CORRELATION
+  - SELF_CORRELATION
+  - LOW_FITNESS
+  - FITNESS
+  - LOW_2Y_SHARPE
+  - TWO_YEAR_SHARPE
+  - CLUSTER_TEST
+  - OSMOSIS_ALLOCATION
+  - MATCHES_COMPETITION
+  - MATCHES_PYRAMID
+  - REGULAR_SUBMISSION
+  - CONCENTRATED_WEIGHT
+  - DATA_DIVERSITY
+  automation_ignored:
+  - POWER_POOL_DESCRIPTION_LENGTH
+  - POWER_POOL_DESCRIPTION_FORMAT
+  - PURE_POWER_POOL_THEME
+  repair_priority:
+    high_gap_max: 0.05
+    medium_gap_max: 0.1
+  manual_finalization:
+    enabled: true
+    description_checks:
+    - POWER_POOL_DESCRIPTION_LENGTH
+    - POWER_POOL_DESCRIPTION_FORMAT
+    pretag_theme_outcomes:
+    - WARNING
+    - PENDING
+    auto_generate_description: true
+    platform_property_write: false
+    manual_action: COPY_DESCRIPTION_SAVE_AND_CHECK_SUBMISSION
+    auto_refresh_every_batches: 10
+    ppc_strategy:
+      clean_max: 0.50
+      mid_max: 0.65
+      mid_min_sharpe: 2.00

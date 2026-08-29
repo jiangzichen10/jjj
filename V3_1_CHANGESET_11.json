@@ -1,0 +1,65 @@
+{
+  "checkpoint": "V3.1-D2",
+  "date": "2026-08-28",
+  "status": "SCHEDULER_EVIDENCE_GATE_OFFLINE_COMPLETE",
+  "baseline_zip_sha256": "2398830f92ec19c4d6647ba8a457711ba8d44b6cda79df63af9ecb1529d0c2b4",
+  "authoritative_execution": "PHASE_COMPATIBILITY",
+  "adaptive_scheduler": {
+    "mode": "SHADOW_ONLY",
+    "authoritative": false,
+    "scheduler_policy_version": "V31_SCHED_SHADOW_002",
+    "evidence_policy_version": "V31_SCHED_EVIDENCE_001"
+  },
+  "new_core_files": [
+    "ppl_engine/scheduler_evidence.py",
+    "tests/test_v31_scheduler_evidence_d2.py"
+  ],
+  "modified_core_files": [
+    "ppl_engine/scheduler_shadow.py",
+    "ppl_engine/round_orchestrator.py",
+    "ppl_round_v31.yaml",
+    "tests/test_v31_scheduler_shadow_d1.py",
+    "V3_1_ARCHITECTURE_CHANGE_MAP.md"
+  ],
+  "features": [
+    "durable scheduler evaluation ledger",
+    "separate scheduler and evidence policy version/hash identities",
+    "actual-action posterior outcome attribution",
+    "counterfactual proxy labelling for unexecuted alternatives",
+    "matured NEW_POST productivity cohorts with right-censor exclusion",
+    "deterministic replay from frozen durable facts",
+    "hard starvation guard and stress harness",
+    "activation eligibility gate with unset production sample thresholds",
+    "safe fallback classification preserving fail-closed core invariants"
+  ],
+  "invariants": [
+    "authoritative=false",
+    "strategy_integration remains PHASE_COMPATIBILITY",
+    "round_orchestrator never branches on shadow_action",
+    "runtime obligations do not compete with Search/Repair expected value",
+    "sim_key and SimulationSpec unchanged by D2 evidence policy",
+    "UNCERTAIN_SUBMISSION no-repost unchanged",
+    "durable simulation_url unchanged",
+    "core DB/durable identity failures remain fail closed",
+    "run_0005 remains frozen",
+    "no 2Y Sharpe >= 1.58 rule introduced"
+  ],
+  "validation": {
+    "collected": 948,
+    "sanitized_runnable": 933,
+    "passed": 933,
+    "failed": 0,
+    "production_db_bound_unavailable": 15,
+    "compatibility_passed": 247,
+    "phase_passed": 320,
+    "production_remote_repair_passed": 149,
+    "v31_passed": 134,
+    "v3_round_orchestrator_passed": 83,
+    "focused_d1_d2_passed": 24,
+    "compileall": "PASS",
+    "live_worldquant_requests": 0,
+    "round_schema_version": 4
+  },
+  "machine_lib_sha256": "58634f1eb01880edc88b7d9904edf3716335c35c17d57aaa0215985d82fa34e4",
+  "next": "D3 only after observed Shadow evidence justifies explicit activation thresholds and user approval"
+}

@@ -1,0 +1,93 @@
+{
+  "project_version": "v3.0.4m",
+  "base_version": "v3.0.4l",
+  "package_type": "CODE_ONLY_OVERLAY",
+  "feature": "PPC_CONTROLLED_BRANCH",
+  "database_files_included": false,
+  "credentials_included": false,
+  "reports_included": false,
+  "machine_lib_included": false,
+  "production_network_used_for_validation": false,
+  "offline_tests_passed": 789,
+  "offline_tests_failed": 0,
+  "shadow_run_id": "run_0005",
+  "shadow_ppc_backfill": {
+    "eligible": 18,
+    "verdict_counts": {
+      "WORSE": 18
+    },
+    "second_preview_eligible": 0
+  },
+  "files": [
+    {
+      "path": "VERSION.txt",
+      "sha256": "1ccff8b8ecdf0e789b8efef9978b48634286f69312f17c80ec8223d34f19016f",
+      "bytes": 8
+    },
+    {
+      "path": "V3_0_4M_PPC_CONTROLLED_BRANCH_README.md",
+      "sha256": "0dbdce51f80cd215a06fb76fb46699538ff88a70a85597f078e16f8caa76edea",
+      "bytes": 7186
+    },
+    {
+      "path": "ppl_rules.yaml",
+      "sha256": "7b3b01a0d3ffea0c8fcae7ae34c038614fa367a2c74f2596ae7e702e21156056",
+      "bytes": 12541
+    },
+    {
+      "path": "ppl_runner.py",
+      "sha256": "19742f0d6b0cf44e77cf6b0e060a5153379411f4c368197128896e58a30b5904",
+      "bytes": 48462
+    },
+    {
+      "path": "ppl_engine/ppc_controlled_branch.py",
+      "sha256": "aa625f208bd5b7bdd2d37f4075baf62fbd18a912be3494d104fb60b3389e98ba",
+      "bytes": 22629
+    },
+    {
+      "path": "ppl_engine/near_pass.py",
+      "sha256": "578cbabea1ec784b364ea026421146e4ce9a4ee7dd132f2c9268b273b56073b4",
+      "bytes": 54449
+    },
+    {
+      "path": "ppl_engine/ppl_classifier.py",
+      "sha256": "49356d98aacb975d85fd3cf0f27ac7af3b1b9d1b2520e21ec410adea51ee419b",
+      "bytes": 22850
+    },
+    {
+      "path": "ppl_engine/production_repair.py",
+      "sha256": "1c42a5f3d257d933acc92445b0c96fa7b0a08486798efb30d4347839f030142a",
+      "bytes": 66317
+    },
+    {
+      "path": "ppl_engine/repair_engine.py",
+      "sha256": "c2c6614b0994e7832259e975e8309ef130d1302a8e1265cf064c13670af05111",
+      "bytes": 28444
+    },
+    {
+      "path": "ppl_engine/round_orchestrator.py",
+      "sha256": "69b534ea5d5641bf7648ac96dc60779f7b8aadb3eb6902c9c13e66b47e45f109",
+      "bytes": 353379
+    },
+    {
+      "path": "tests/test_ppc_controlled_branch_v1.py",
+      "sha256": "54bd7e8f70e63067bb7511cb6fce0156b28a5c3408c1fe9afc0d71417307b451",
+      "bytes": 10966
+    },
+    {
+      "path": "tests/test_production_repair.py",
+      "sha256": "c057a187a097ab5156673e658135619eb2970085dfa37518b6a3934b1fb99ec7",
+      "bytes": 42209
+    },
+    {
+      "path": "tests/test_repair_selector_neutralization_regression.py",
+      "sha256": "586fe85fd8923532ff4b0761f80e2a3deb4297604b3e120cb1c11f0c5eaf44b0",
+      "bytes": 5561
+    },
+    {
+      "path": "tests/test_v3_round_orchestrator.py",
+      "sha256": "b17e50ecb674ee2902caad8caa684922a3f54297e8256f793b6907129d9c35ff",
+      "bytes": 91522
+    }
+  ]
+}

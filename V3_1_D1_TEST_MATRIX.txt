@@ -1,0 +1,43 @@
+V3.1-D1 OFFLINE TEST MATRIX — 2026-08-28
+
+Collected tests: 903
+Runnable in sanitized source package: 888
+Passed: 888
+Failed: 0
+Production-DB-bound / not runnable from sanitized source: 15
+
+Non-overlapping validation groups:
+
+1) Audit / candidate / check / concurrency / execution-hash sanitized / HT / machine-hash / near-pass / PPC / classifier
+   Result: 247 passed
+   Unavailable: 1 historical execution-hash integration requiring root ppl_runner.db + alpha_results.db
+
+2) Phase 2.1 / 3 / 4 / 5 / 6 / 7 / 8 / 9 / 9.1 / 10A / 10B
+   Result: 320 passed
+   Unavailable:
+   - Phase-5 real production snapshot assertion requiring root ppl_runner.db
+   - Phase-7 CLI preview requiring root production runner DB
+
+3) Production logging / Production Repair / reconcile / remote simulation / repair selector / rescue evidence / same-family / turnover / SQLite diagnostics
+   Result: 149 passed
+
+4) V3.1 Foundation / A1 / B1 / B2 / C1 / C2 / C3 / D1 / unattended soak
+   Result: 89 passed
+
+5) V3 Round Orchestrator
+   Result: 83 passed
+
+Not runnable from sanitized source:
+- 12 tests in test_ppl_foundation.py requiring root alpha_results.db / production snapshot data
+- 3 additional production-DB-bound tests listed above
+
+D1-specific tests: 6 passed
+- explicit SHADOW_ONLY configuration and independent shadow policy identity;
+- paid Search productivity metrics and explicit Near-Pass proxy labeling;
+- actual SEARCH vs shadow REPAIR disagreement remains non-authoritative;
+- remote-slot/fairness input can recommend WAIT without controlling execution;
+- durable idempotent shadow event with selection identity fingerprint;
+- static guard: orchestrator never branches on .shadow_action.
+
+Static compile: PASS
+Live WorldQuant requests: 0
