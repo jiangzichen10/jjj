@@ -10,6 +10,8 @@ continuous:
   scheduler_fairness_enabled: true
   safe_checkpoint_policy_reload: true
   allow_search_pool_expansion: false
+  qualified_check_refresh:
+    min_retry_after_seconds: 3.0
   default_max_batches: null
   idle_wait_seconds: 30
   remote_poll_interval_seconds: 5

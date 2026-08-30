@@ -423,6 +423,21 @@ def _round_policy_upgrade_compatible(stored: Mapping[str, Any], current: Mapping
     stored_versions = dict(stored.get("policy_versions") or {})
     current_versions = dict(current.get("policy_versions") or {})
 
+    # Qualified Check Refresh polling resilience is operational GET-only
+    # configuration. Permit only the exact additive introduction of this
+    # nested block; every scheduler, ranking, budget and execution field must
+    # remain byte-equivalent after removing it.
+    current_qcr = dict((current.get("continuous") or {}).get("qualified_check_refresh") or {})
+    stored_qcr = dict((stored.get("continuous") or {}).get("qualified_check_refresh") or {})
+    if current_qcr and not stored_qcr:
+        legacy_qcr = json.loads(_json(current))
+        legacy_continuous = dict(legacy_qcr.get("continuous") or {})
+        legacy_continuous.pop("qualified_check_refresh", None)
+        legacy_qcr["continuous"] = legacy_continuous
+        if (_json(legacy_qcr) == _json(stored)
+                or _round_policy_upgrade_compatible(stored, legacy_qcr)):
+            return True
+
     # OPEN1 Scheduler/Evidence semantic upgrades. These change only
     # observational availability/evidence semantics; Actual PHASE_COMPATIBILITY,
     # Simulation POST identity, sim_key, durable URL, budgets and batch sizing
@@ -778,6 +793,11 @@ def _migrate_round_policy_if_allowed(store: Any, round_id: str, run_id: str,
         )
     ):
         change = "FIXED_SEARCH_POOL_AND_SHADOW_EVIDENCE_UPGRADE"
+    elif (
+        not (stored.get("continuous") or {}).get("qualified_check_refresh")
+        and (current.get("continuous") or {}).get("qualified_check_refresh")
+    ):
+        change = "QUALIFIED_CHECK_REFRESH_RETRY_FLOOR"
     else:
         change = "ONLINE_EVIDENCE_RANKING_ADDITIVE"
     update_round(
@@ -794,6 +814,7 @@ def _migrate_round_policy_if_allowed(store: Any, round_id: str, run_id: str,
             "scheduler_shadow_policy": (current.get("scheduler_shadow") or {}).get("policy_version"),
             "scheduler_evidence_policy": (current.get("scheduler_evidence") or {}).get("evidence_policy_version"),
             "allow_search_pool_expansion": (current.get("continuous") or {}).get("allow_search_pool_expansion"),
+            "qualified_check_refresh": (current.get("continuous") or {}).get("qualified_check_refresh"),
         },
         source_event_key=(
             f"round_policy_upgrade:{round_id}:{to_ranking}:"
@@ -802,6 +823,7 @@ def _migrate_round_policy_if_allowed(store: Any, round_id: str, run_id: str,
             f":{(current.get('scheduler_shadow') or {}).get('policy_version')}"
             f":{(current.get('scheduler_evidence') or {}).get('evidence_policy_version')}"
             f":{(current.get('continuous') or {}).get('allow_search_pool_expansion')}"
+            f":{_json((current.get('continuous') or {}).get('qualified_check_refresh') or {})}"
         ),
     )
     return True
@@ -5889,20 +5911,25 @@ def _qualified_check_poll_state(poll: Mapping[str, Any]) -> str:
     parsed = dict(poll.get("parsed") or {})
     parse_status = str(parsed.get("parse_status") or "")
     semantic = str(parsed.get("session_semantic_status") or "").upper()
-    retry_after = poll.get("retry_after_seconds")
+    server_retry_after = poll.get("server_retry_after_seconds", poll.get("retry_after_seconds"))
+    effective_retry_after = poll.get("effective_retry_after_seconds")
 
-    def retry_suffix() -> str:
-        if retry_after is None:
-            return ""
+    def seconds(value: Any) -> str:
         try:
-            return f" | retry_after={float(retry_after):.1f}s"
+            return f"{float(value):.1f}s"
         except (TypeError, ValueError):
-            return " | retry_after=unknown"
+            return "unknown"
 
     if parse_status == "HTTP_200_EMPTY_BODY_RETRY":
-        return f"poll={poll_no} | HTTP {http_status} EMPTY{retry_suffix()}"
+        server = f" | server_retry_after={seconds(server_retry_after)}" if server_retry_after is not None else ""
+        effective = (
+            f" | retry_after={seconds(effective_retry_after)}"
+            if effective_retry_after is not None else ""
+        )
+        return f"poll={poll_no} | HTTP {http_status} EMPTY{server}{effective}"
     if http_status == 429:
-        return f"poll={poll_no} | HTTP 429{retry_suffix()} | THROTTLED"
+        server = f" | server_retry_after={seconds(server_retry_after)}" if server_retry_after is not None else ""
+        return f"poll={poll_no} | HTTP 429{server} | THROTTLED"
     if semantic == "RESOLVED":
         results = {str(x.get("normalized_name") or ""): x for x in parsed.get("results", [])}
         pp = results.get("POWER_POOL_CORRELATION")
@@ -6004,6 +6031,150 @@ def _qualified_check_refresh_targets(
     return {"targets": targets, "skipped": skipped}
 
 
+_QUALIFIED_CAMPAIGN_STARTED = "QUALIFIED_CHECK_REFRESH_CAMPAIGN_STARTED"
+_QUALIFIED_CAMPAIGN_RESOLVED = "QUALIFIED_CHECK_REFRESH_TARGET_RESOLVED"
+_QUALIFIED_CAMPAIGN_DEFERRED = "QUALIFIED_CHECK_REFRESH_TARGET_DEFERRED"
+_QUALIFIED_CAMPAIGN_INTERRUPTED = "QUALIFIED_CHECK_REFRESH_CAMPAIGN_INTERRUPTED"
+_QUALIFIED_CAMPAIGN_COMPLETED = "QUALIFIED_CHECK_REFRESH_CAMPAIGN_COMPLETED"
+_QUALIFIED_CAMPAIGN_SUPERSEDED = "QUALIFIED_CHECK_REFRESH_CAMPAIGN_SUPERSEDED"
+
+
+def _qualified_campaign_evidence_source(campaign_id: str) -> str:
+    return f"LIVE_CHECK_REFRESH_QUALIFIED:{campaign_id}"
+
+
+def _load_active_qualified_refresh_campaign(
+    store: Any, run_id: str, round_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Rebuild the latest active campaign from generic durable round events."""
+    event_types = (
+        _QUALIFIED_CAMPAIGN_STARTED, _QUALIFIED_CAMPAIGN_RESOLVED,
+        _QUALIFIED_CAMPAIGN_DEFERRED, _QUALIFIED_CAMPAIGN_INTERRUPTED,
+        _QUALIFIED_CAMPAIGN_COMPLETED, _QUALIFIED_CAMPAIGN_SUPERSEDED,
+    )
+    placeholders = ",".join("?" for _ in event_types)
+    with store.connect() as conn:
+        rows = conn.execute(
+            f"""SELECT event_id,event_type,candidate_id,alpha_id,payload_json,created_at
+                  FROM ppl_round_events
+                 WHERE run_id=? AND round_id=? AND event_type IN ({placeholders})
+                 ORDER BY event_id""",
+            (run_id, round_id, *event_types),
+        ).fetchall()
+    starts: List[Dict[str, Any]] = []
+    terminal: set[str] = set()
+    resolved_by_event: Dict[str, set[Tuple[str, str]]] = defaultdict(set)
+    deferred_by_event: Dict[str, set[Tuple[str, str]]] = defaultdict(set)
+    interrupted_by_event: Dict[str, set[Tuple[str, str]]] = defaultdict(set)
+    for raw in rows:
+        row = dict(raw)
+        try:
+            payload = json.loads(row.get("payload_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        campaign_id = str(payload.get("campaign_id") or "")
+        if not campaign_id:
+            continue
+        if row["event_type"] == _QUALIFIED_CAMPAIGN_STARTED:
+            starts.append({**payload, "created_at": row.get("created_at")})
+        elif row["event_type"] in {_QUALIFIED_CAMPAIGN_COMPLETED, _QUALIFIED_CAMPAIGN_SUPERSEDED}:
+            terminal.add(campaign_id)
+        elif row["event_type"] == _QUALIFIED_CAMPAIGN_RESOLVED:
+            resolved_by_event[campaign_id].add((
+                str(row.get("candidate_id") or payload.get("candidate_id") or ""),
+                str(row.get("alpha_id") or payload.get("alpha_id") or ""),
+            ))
+        elif row["event_type"] == _QUALIFIED_CAMPAIGN_DEFERRED:
+            deferred_by_event[campaign_id].add((
+                str(row.get("candidate_id") or payload.get("candidate_id") or ""),
+                str(row.get("alpha_id") or payload.get("alpha_id") or ""),
+            ))
+        elif row["event_type"] == _QUALIFIED_CAMPAIGN_INTERRUPTED:
+            interrupted_by_event[campaign_id].add((
+                str(row.get("candidate_id") or payload.get("candidate_id") or ""),
+                str(row.get("alpha_id") or payload.get("alpha_id") or ""),
+            ))
+    active = next((item for item in reversed(starts)
+                   if str(item.get("campaign_id") or "") not in terminal), None)
+    if active is None:
+        return None
+    campaign_id = str(active["campaign_id"])
+    targets = [dict(item) for item in (active.get("target_snapshot") or [])]
+    resolved = set(resolved_by_event.get(campaign_id) or set())
+    # A resolved campaign-scoped Check session is also authoritative. This
+    # closes the tiny crash window between saving its poll/session transaction
+    # and appending the corresponding round event.
+    evidence_source = _qualified_campaign_evidence_source(campaign_id)
+    with store.connect() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT s.candidate_id,s.alpha_id
+                 FROM ppl_check_sessions s
+                 JOIN ppl_check_polls p ON p.check_session_id=s.check_session_id
+                WHERE s.run_id=? AND s.session_status='RESOLVED' AND p.evidence_source=?""",
+            (run_id, evidence_source),
+        ).fetchall()
+    resolved.update((str(row[0] or ""), str(row[1] or "")) for row in rows)
+    valid_keys = {(str(item.get("candidate_id") or ""), str(item.get("alpha_id") or "")) for item in targets}
+    resolved.intersection_update(valid_keys)
+    deferred = set(deferred_by_event.get(campaign_id) or set()).intersection(valid_keys) - resolved
+    interrupted = set(interrupted_by_event.get(campaign_id) or set()).intersection(valid_keys) - resolved
+    return {
+        "campaign_id": campaign_id,
+        "started_at": active.get("started_at") or active.get("created_at"),
+        "targets": targets,
+        "skipped": [dict(item) for item in (active.get("selector_skipped") or [])],
+        "total_count": len(targets),
+        "resolved_keys": resolved,
+        "deferred_keys": deferred,
+        "interrupted_keys": interrupted,
+    }
+
+
+def _start_qualified_refresh_campaign(
+    store: Any, run_id: str, round_id: str, targets: Sequence[Mapping[str, Any]],
+    skipped: Sequence[Mapping[str, Any]],
+) -> Dict[str, Any]:
+    started_at = _now()
+    snapshot = [dict(item) for item in targets]
+    identity = _json([
+        [str(item.get("candidate_id") or ""), str(item.get("alpha_id") or "")]
+        for item in snapshot
+    ])
+    campaign_id = "qcr_" + hashlib.sha256(
+        f"{run_id}|{round_id}|{started_at}|{identity}".encode("utf-8")
+    ).hexdigest()[:24]
+    payload = {
+        "campaign_id": campaign_id, "run_id": run_id, "started_at": started_at,
+        "target_snapshot": snapshot, "target_order": [
+            str(item.get("candidate_id") or "") for item in snapshot
+        ],
+        "total_count": len(snapshot), "campaign_status": "ACTIVE",
+        "selector_skipped": [dict(item) for item in skipped],
+    }
+    record_event(
+        store, round_id, run_id, _QUALIFIED_CAMPAIGN_STARTED,
+        payload=payload,
+        source_event_key=f"qualified_check_campaign_started:{campaign_id}",
+    )
+    return {
+        "campaign_id": campaign_id, "started_at": started_at,
+        "targets": snapshot, "skipped": [dict(item) for item in skipped],
+        "total_count": len(snapshot), "resolved_keys": set(),
+        "deferred_keys": set(), "interrupted_keys": set(),
+    }
+
+
+def _close_qualified_refresh_campaign(
+    store: Any, round_id: str, run_id: str, campaign_id: str, event_type: str,
+    *, payload: Optional[Mapping[str, Any]] = None,
+) -> None:
+    body = {"campaign_id": campaign_id, **dict(payload or {})}
+    record_event(
+        store, round_id, run_id, event_type, payload=body,
+        source_event_key=f"{event_type.lower()}:{campaign_id}",
+    )
+
+
 def _sync_qualified_refresh_resolution(
     store: Any, run_id: str, candidate_id: str, alpha_id: str, report: Mapping[str, Any],
 ) -> None:
@@ -6040,9 +6211,9 @@ def refresh_qualified_checks(
     store: Any, config: Any, machine: Any, session: Any, alpha_db: Path, machine_path: Path,
     round_policy_path: Path, project_dir: Path, *, run_id: str,
     preflight: Optional[Mapping[str, Any]] = None, authentication_post_count: int = 0,
-    max_candidates: Optional[int] = None,
+    max_candidates: Optional[int] = None, force_new_campaign: bool = False,
 ) -> Dict[str, Any]:
-    """Explicit paused-run GET-only refresh for all currently qualified Alphas."""
+    """Explicit paused-run GET-only refresh with durable campaign resume."""
     local_preflight = dict(preflight or preflight_qualified_check_refresh(
         store, config, machine_path, round_policy_path, run_id=run_id,
     ))
@@ -6053,84 +6224,201 @@ def refresh_qualified_checks(
     # Reports must retain the durable run policy; semantic compatibility with
     # the supplied current policy was already proven by preflight.
     policy = dict(local_preflight["stored_policy"])
+    current_policy = dict(local_preflight.get("current_policy") or policy)
     hash_result = dict(local_preflight["hash_result"])
-    selected = _qualified_check_refresh_targets(store, config, alpha_db, run_id, round_id)
-    targets = list(selected["targets"])
-    skipped = list(selected["skipped"])
-    if max_candidates is not None and int(max_candidates) > 0:
-        deferred = targets[int(max_candidates):]
-        targets = targets[:int(max_candidates)]
-        skipped.extend({
-            "candidate_id": x["candidate_id"], "alpha_id": x["alpha_id"],
-            "reason": "QUALIFIED_REFRESH_INVOCATION_LIMIT",
-        } for x in deferred)
+    active_campaign = _load_active_qualified_refresh_campaign(store, run_id, round_id)
+    if force_new_campaign and active_campaign is not None:
+        _close_qualified_refresh_campaign(
+            store, round_id, run_id, str(active_campaign["campaign_id"]),
+            _QUALIFIED_CAMPAIGN_SUPERSEDED,
+            payload={"reason": "EXPLICIT_FORCE_NEW_CAMPAIGN"},
+        )
+        active_campaign = None
+    resumed = active_campaign is not None
+    if active_campaign is None:
+        selected = _qualified_check_refresh_targets(store, config, alpha_db, run_id, round_id)
+        targets = list(selected["targets"])
+        skipped = list(selected["skipped"])
+        if max_candidates is not None and int(max_candidates) > 0:
+            deferred = targets[int(max_candidates):]
+            targets = targets[:int(max_candidates)]
+            skipped.extend({
+                "candidate_id": x["candidate_id"], "alpha_id": x["alpha_id"],
+                "reason": "QUALIFIED_REFRESH_CAMPAIGN_SNAPSHOT_LIMIT",
+            } for x in deferred)
+        campaign = _start_qualified_refresh_campaign(
+            store, run_id, round_id, targets, skipped,
+        )
+    else:
+        campaign = active_campaign
+        targets = list(campaign["targets"])
+        skipped = list(campaign["skipped"])
+
+    campaign_id = str(campaign["campaign_id"])
+    resolved_keys = set(campaign.get("resolved_keys") or set())
+    durable_deferred_keys = set(campaign.get("deferred_keys") or set())
+    durable_interrupted_keys = set(campaign.get("interrupted_keys") or set())
+    pending_targets = [
+        target for target in targets
+        if (str(target.get("candidate_id") or ""), str(target.get("alpha_id") or "")) not in resolved_keys
+    ]
+    retry_floor = parse_continuous_policy(current_policy).qualified_check_min_retry_after_seconds
 
     max_http_requests = max(1, int(config.plan.get("budgets", {}).get("max_check_http_requests", 20000)))
     reports: List[Dict[str, Any]] = []
     used_http_requests = 0
     stopped_reason: Optional[str] = None
     progress_total = max(1, len(targets))
+    deferred_count = 0
+    resolved_this_invocation = 0
+    processed_this_invocation = 0
+    current_target: Optional[Dict[str, Any]] = None
 
-    for index, target in enumerate(targets, 1):
-        cid = str(target["candidate_id"]); alpha_id = str(target["alpha_id"])
-        if used_http_requests >= max_http_requests:
-            stopped_reason = "CHECK_HTTP_BUDGET_EXHAUSTED"
-            break
-        _check_progress_line(
-            "QUALIFIED CHECK REFRESH", index - 1, progress_total,
-            candidate_id=cid, alpha_id=alpha_id,
-            state=f"START {index}/{len(targets)}",
-        )
-        def _qualified_poll_progress(poll: Mapping[str, Any]) -> None:
+    mode = "RESUME" if resumed else "START"
+    print(
+        f"QUALIFIED CHECK REFRESH {mode} campaign={campaign_id} | "
+        f"completed={len(resolved_keys)} | remaining={len(pending_targets)} | "
+        f"deferred={len(durable_deferred_keys)} | interrupted={len(durable_interrupted_keys)} | total={len(targets)}",
+        flush=True,
+    )
+
+    try:
+        for target in pending_targets:
+            current_target = dict(target)
+            cid = str(target["candidate_id"]); alpha_id = str(target["alpha_id"])
+            target_key = (cid, alpha_id)
+            durable_deferred_keys.discard(target_key)
+            durable_interrupted_keys.discard(target_key)
+            ordinal = targets.index(target) + 1
+            if used_http_requests >= max_http_requests:
+                stopped_reason = "CHECK_HTTP_BUDGET_EXHAUSTED"
+                break
+            record_event(
+                store, round_id, run_id, "QUALIFIED_CHECK_REFRESH_TARGET_ATTEMPT_STARTED",
+                candidate_id=cid, alpha_id=alpha_id,
+                payload={"campaign_id": campaign_id, "ordinal": ordinal},
+            )
             _check_progress_line(
-                "QUALIFIED CHECK REFRESH", index - 1, progress_total,
-                candidate_id=cid, alpha_id=alpha_id, state=_qualified_check_poll_state(poll),
+                "QUALIFIED CHECK REFRESH", len(resolved_keys), progress_total,
+                candidate_id=cid, alpha_id=alpha_id,
+                state=(f"{mode} ordinal={ordinal}/{len(targets)} | processed={processed_this_invocation} "
+                       f"resolved={len(resolved_keys)} pending={len(targets) - len(resolved_keys)} "
+                       f"deferred={len(durable_deferred_keys)}"),
             )
-        try:
-            report = refresh_one_pretag_check(
-                store, config, machine, session, run_id, cid,
-                source="V31_QUALIFIED_CHECK_REFRESH",
-                evidence_source="LIVE_CHECK_REFRESH_QUALIFIED",
-                poll_observer=_qualified_poll_progress,
+
+            def _qualified_poll_progress(poll: Mapping[str, Any]) -> None:
+                _check_progress_line(
+                    "QUALIFIED CHECK REFRESH", len(resolved_keys), progress_total,
+                    candidate_id=cid, alpha_id=alpha_id, state=_qualified_check_poll_state(poll),
+                )
+
+            try:
+                report = refresh_one_pretag_check(
+                    store, config, machine, session, run_id, cid,
+                    source="V31_QUALIFIED_CHECK_REFRESH",
+                    evidence_source=_qualified_campaign_evidence_source(campaign_id),
+                    poll_observer=_qualified_poll_progress,
+                    min_retry_after_seconds=retry_floor,
+                )
+            except Exception as exc:
+                report = {
+                    "executed": False, "candidate_id": cid, "alpha_id": alpha_id,
+                    "session_status": "TRANSIENT_ERROR",
+                    "error_type": type(exc).__name__, "error_nature": "TRANSIENT",
+                    "error": f"{type(exc).__name__}: {exc}", "http_request_count": 0,
+                }
+            report = dict(report)
+            report["selection"] = dict(target)
+            reports.append(report)
+            processed_this_invocation += 1
+            used_http_requests += int(report.get("http_request_count") or 0)
+            session_status = str(report.get("session_status") or "").upper()
+            if session_status == "RESOLVED":
+                _sync_qualified_refresh_resolution(store, run_id, cid, alpha_id, report)
+                record_event(
+                    store, round_id, run_id, _QUALIFIED_CAMPAIGN_RESOLVED,
+                    candidate_id=cid, alpha_id=alpha_id,
+                    payload={"campaign_id": campaign_id, "ordinal": ordinal},
+                    source_event_key=f"qualified_check_campaign_resolved:{campaign_id}:{cid}:{alpha_id}",
+                )
+                resolved_keys.add((cid, alpha_id))
+                durable_deferred_keys.discard(target_key)
+                durable_interrupted_keys.discard(target_key)
+                resolved_this_invocation += 1
+            else:
+                deferred_count += 1
+                durable_deferred_keys.add(target_key)
+                record_event(
+                    store, round_id, run_id, _QUALIFIED_CAMPAIGN_DEFERRED,
+                    candidate_id=cid, alpha_id=alpha_id,
+                    payload={
+                        "campaign_id": campaign_id, "ordinal": ordinal,
+                        "session_status": session_status,
+                        "error_type": report.get("error_type"),
+                    },
+                )
+            _check_progress_line(
+                "QUALIFIED CHECK REFRESH", len(resolved_keys), progress_total,
+                candidate_id=cid, alpha_id=alpha_id,
+                state=(f"{session_status or 'DONE'} | processed={processed_this_invocation} "
+                       f"resolved={len(resolved_keys)} pending={len(targets) - len(resolved_keys)} "
+                       f"deferred={len(durable_deferred_keys)}"),
             )
-        except Exception as exc:
-            report = {
-                "executed": False, "candidate_id": cid, "alpha_id": alpha_id,
-                "session_status": "TRANSIENT_ERROR",
-                "error_type": type(exc).__name__, "error_nature": "TRANSIENT",
-                "error": f"{type(exc).__name__}: {exc}", "http_request_count": 0,
-            }
-        report = dict(report)
-        report["selection"] = dict(target)
-        reports.append(report)
-        used_http_requests += int(report.get("http_request_count") or 0)
-        _sync_qualified_refresh_resolution(store, run_id, cid, alpha_id, report)
-        _check_progress_line(
-            "QUALIFIED CHECK REFRESH", index, progress_total,
-            candidate_id=cid, alpha_id=alpha_id,
-            state=str(report.get("session_status") or "DONE"),
+            error_type = str(report.get("error_type") or "")
+            if error_type in {"HTTP_429_THROTTLE_DEFERRED", "HTTP_429"}:
+                stopped_reason = error_type
+                break
+            current_target = None
+    except KeyboardInterrupt:
+        if current_target:
+            durable_interrupted_keys.add((
+                str(current_target.get("candidate_id") or ""),
+                str(current_target.get("alpha_id") or ""),
+            ))
+        record_event(
+            store, round_id, run_id, _QUALIFIED_CAMPAIGN_INTERRUPTED,
+            candidate_id=str((current_target or {}).get("candidate_id") or "") or None,
+            alpha_id=str((current_target or {}).get("alpha_id") or "") or None,
+            payload={
+                "campaign_id": campaign_id, "resolved_count": len(resolved_keys),
+                "pending_count": len(targets) - len(resolved_keys),
+                "reason": "KEYBOARD_INTERRUPT",
+            },
         )
-        error_type = str(report.get("error_type") or "")
-        if error_type in {"HTTP_429_THROTTLE_DEFERRED", "HTTP_429"}:
-            stopped_reason = error_type
-            break
+        print(
+            f"QUALIFIED CHECK REFRESH INTERRUPTED campaign={campaign_id} | "
+            f"completed={len(resolved_keys)} | remaining={len(targets) - len(resolved_keys)} | "
+            f"deferred={len(durable_deferred_keys)} | interrupted={len(durable_interrupted_keys)} | total={len(targets)}",
+            flush=True,
+        )
+        raise
 
     processed_ids = {str(x.get("candidate_id") or "") for x in reports}
     if stopped_reason:
-        for target in targets:
+        for target in pending_targets:
             if str(target["candidate_id"]) not in processed_ids:
                 skipped.append({
                     "candidate_id": target["candidate_id"], "alpha_id": target["alpha_id"],
                     "reason": f"NOT_ATTEMPTED_AFTER_STOP:{stopped_reason}",
                 })
 
+    campaign_complete = len(resolved_keys) == len(targets)
+    if campaign_complete:
+        _close_qualified_refresh_campaign(
+            store, round_id, run_id, campaign_id, _QUALIFIED_CAMPAIGN_COMPLETED,
+            payload={"resolved_count": len(resolved_keys), "total_count": len(targets)},
+        )
     record_event(
         store, round_id, run_id, "QUALIFIED_CHECK_REFRESH",
         batch_no=int((get_round(store, round_id=round_id) or {}).get("current_batch") or 0),
         phase=str((get_round(store, round_id=round_id) or {}).get("phase") or "SEARCH"),
         payload={
-            "requested": len(targets), "executed": sum(bool(x.get("executed")) for x in reports),
-            "resolved": sum(str(x.get("session_status") or "").upper() == "RESOLVED" for x in reports),
+            "campaign_id": campaign_id, "campaign_resumed": resumed,
+            "campaign_status": "COMPLETED" if campaign_complete else "ACTIVE",
+            "requested": len(pending_targets), "executed": sum(bool(x.get("executed")) for x in reports),
+            "resolved": resolved_this_invocation,
+            "durable_resolved": len(resolved_keys), "durable_pending": len(targets) - len(resolved_keys),
+            "deferred": deferred_count, "durable_deferred": len(durable_deferred_keys),
             "http_request_count": used_http_requests, "stopped_reason": stopped_reason,
             "skipped": skipped, "simulation_posts": 0, "property_writes": 0,
             "submit_requests": 0, "business_methods": ["GET"],
@@ -6141,8 +6429,14 @@ def refresh_qualified_checks(
     return {
         "project_version": "v3.1", "action": "REFRESH_QUALIFIED_CHECKS",
         "run_id": run_id, "round_id": round_id, "round_status": str(rr.get("status") or ""),
+        "campaign_id": campaign_id, "campaign_resumed": resumed,
+        "campaign_status": "COMPLETED" if campaign_complete else "ACTIVE",
         "target_count": len(targets), "executed_check_count": sum(bool(x.get("executed")) for x in reports),
-        "resolved_check_count": sum(str(x.get("session_status") or "").upper() == "RESOLVED" for x in reports),
+        "processed_this_invocation": processed_this_invocation,
+        "resolved_check_count": resolved_this_invocation,
+        "durable_resolved_count": len(resolved_keys),
+        "pending_count": len(targets) - len(resolved_keys), "deferred_count": deferred_count,
+        "durable_deferred_count": len(durable_deferred_keys),
         "http_request_count": used_http_requests, "stopped_reason": stopped_reason,
         "reports": reports, "skipped": skipped,
         "classification_counts_after_refresh": after.get("ppl_classification", {}).get("counts", {}),

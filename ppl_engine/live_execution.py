@@ -750,7 +750,8 @@ def run_one_pretag_check(store: Any, config: Any, machine: Any, session: Any, ru
 def refresh_one_pretag_check(store: Any, config: Any, machine: Any, session: Any, run_id: str,
                              candidate_id: str, *, source: str = "MANUAL_FINALIZATION_REFRESH",
                              evidence_source: str = "LIVE_CHECK_REFRESH",
-                             poll_observer: Optional[Callable[[Mapping[str, Any]], None]] = None) -> Dict[str, Any]:
+                             poll_observer: Optional[Callable[[Mapping[str, Any]], None]] = None,
+                             min_retry_after_seconds: float = 0.5) -> Dict[str, Any]:
     """Refresh one existing Alpha's PRE_TAG /check without changing lifecycle.
 
     This is deliberately GET-only. It appends a new durable check session so
@@ -777,6 +778,7 @@ def refresh_one_pretag_check(store: Any, config: Any, machine: Any, session: Any
         evidence_source=evidence_source, wait=time.sleep, store=store,
         throttle_max_events=max(1, int(runtime.get("check_429_max_events_per_session", 4))),
         poll_observer=poll_observer,
+        min_retry_after_seconds=min_retry_after_seconds,
     )
     final = check.get("final") or {}
     results = {str(x.get("normalized_name")): x for x in final.get("results", [])}

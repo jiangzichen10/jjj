@@ -31,6 +31,7 @@ class ContinuousPolicy:
     scheduler_fairness_enabled: bool = False
     safe_checkpoint_policy_reload: bool = False
     allow_search_pool_expansion: bool = True
+    qualified_check_min_retry_after_seconds: float = 3.0
     default_max_batches: Optional[int] = None
     idle_wait_seconds: float = 30.0
     remote_poll_interval_seconds: float = 5.0
@@ -100,12 +101,18 @@ def parse_continuous_policy(round_policy: Mapping[str, Any]) -> ContinuousPolicy
     discovery_failure_cooldown_seconds = float(raw.get("discovery_failure_cooldown_seconds", 300.0))
     auth_retry_seconds = float(raw.get("auth_retry_seconds", 60.0))
     due_sleep_max_seconds = float(raw.get("due_sleep_max_seconds", 300.0))
+    qualified_refresh = dict(raw.get("qualified_check_refresh") or {})
+    qualified_check_min_retry_after_seconds = float(
+        qualified_refresh.get("min_retry_after_seconds", 3.0)
+    )
     if check_poll_interval_seconds <= 0 or check_poll_max_per_cycle <= 0:
         raise ValueError("CONTINUOUS_CHECK_QUEUE_SETTINGS_MUST_BE_POSITIVE")
     if discovery_poll_interval_seconds <= 0 or discovery_poll_max_per_cycle <= 0 or discovery_failure_cooldown_seconds <= 0:
         raise ValueError("CONTINUOUS_DISCOVERY_QUEUE_SETTINGS_MUST_BE_POSITIVE")
     if auth_retry_seconds <= 0 or due_sleep_max_seconds <= 0:
         raise ValueError("CONTINUOUS_CONTROL_WAIT_SETTINGS_MUST_BE_POSITIVE")
+    if qualified_check_min_retry_after_seconds <= 0:
+        raise ValueError("QUALIFIED_CHECK_MIN_RETRY_AFTER_SECONDS_MUST_BE_POSITIVE")
 
     return ContinuousPolicy(
         lifecycle_mode=mode,
@@ -116,6 +123,7 @@ def parse_continuous_policy(round_policy: Mapping[str, Any]) -> ContinuousPolicy
         scheduler_fairness_enabled=bool(raw.get("scheduler_fairness_enabled", mode is LifecycleMode.CONTINUOUS)),
         safe_checkpoint_policy_reload=bool(raw.get("safe_checkpoint_policy_reload", mode is LifecycleMode.CONTINUOUS)),
         allow_search_pool_expansion=bool(raw.get("allow_search_pool_expansion", True)),
+        qualified_check_min_retry_after_seconds=qualified_check_min_retry_after_seconds,
         default_max_batches=default_max_batches,
         idle_wait_seconds=idle_wait_seconds,
         remote_poll_interval_seconds=remote_poll_interval_seconds,
@@ -146,6 +154,9 @@ def continuous_policy_dict(policy: ContinuousPolicy) -> dict:
         "scheduler_fairness_enabled": policy.scheduler_fairness_enabled,
         "safe_checkpoint_policy_reload": policy.safe_checkpoint_policy_reload,
         "allow_search_pool_expansion": policy.allow_search_pool_expansion,
+        "qualified_check_refresh": {
+            "min_retry_after_seconds": policy.qualified_check_min_retry_after_seconds,
+        },
         "default_max_batches": policy.default_max_batches,
         "idle_wait_seconds": policy.idle_wait_seconds,
         "remote_poll_interval_seconds": policy.remote_poll_interval_seconds,

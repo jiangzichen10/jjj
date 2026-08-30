@@ -1,5 +1,6 @@
 import inspect
 import json
+import copy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,15 +10,19 @@ from ppl_engine.check_transport import CheckBudget, CheckResponse, semantic_poll
 from ppl_engine.config import ConfigError, load_effective_config
 from ppl_engine.continuous_check import enqueue_pretag_checks, poll_due_checks
 from ppl_engine.round_orchestrator import (
+    _load_active_qualified_refresh_campaign,
+    _round_policy_upgrade_compatible,
     _qualified_check_refresh_targets,
     _qualified_check_poll_state,
     _sync_qualified_refresh_resolution,
     load_round_policy,
     preflight_qualified_check_refresh,
+    refresh_qualified_checks,
 )
 from ppl_engine.round_store import create_round, ensure_round_schema
 from ppl_engine.store import RunnerStore
 from ppl_engine.live_execution import _check_result_display_num
+from ppl_engine.continuous_policy import parse_continuous_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,7 +86,8 @@ def test_qualified_ppc_display_prefers_normalized_value():
 
 def test_qualified_poll_progress_states_are_compact_and_payload_free():
     empty = _qualified_check_poll_state({
-        "semantic_poll_index": 1, "http_status": 200, "retry_after_seconds": 1,
+        "semantic_poll_index": 1, "http_status": 200,
+        "server_retry_after_seconds": 1, "effective_retry_after_seconds": 3,
         "parsed": {"parse_status": "HTTP_200_EMPTY_BODY_RETRY", "raw_payload": {"secret": "not logged"}},
     })
     throttled = _qualified_check_poll_state({
@@ -94,8 +100,8 @@ def test_qualified_poll_progress_states_are_compact_and_payload_free():
             "normalized_name": "POWER_POOL_CORRELATION", "normalized_value": None, "raw_value": 0.7715,
         }]},
     })
-    assert empty == "poll=1 | HTTP 200 EMPTY | retry_after=1.0s"
-    assert throttled == "poll=2 | HTTP 429 | retry_after=3.0s | THROTTLED"
+    assert empty == "poll=1 | HTTP 200 EMPTY | server_retry_after=1.0s | retry_after=3.0s"
+    assert throttled == "poll=2 | HTTP 429 | server_retry_after=3.0s | THROTTLED"
     assert resolved == "poll=7 | RESOLVED | PPC=0.7715"
     assert "secret" not in empty + throttled + resolved
 
@@ -112,6 +118,40 @@ def test_semantic_poll_429_progress_and_final_error_are_preserved():
     assert observed[0]["retry_after_seconds"] == 2.0
     assert out["session_status"] == "BUDGET_EXHAUSTED"
     assert out["error_type"] == "HTTP_429_THROTTLE_DEFERRED"
+
+
+@pytest.mark.parametrize("server_retry,expected", [(1.0, 3.0), (5.0, 5.0)])
+def test_qualified_retry_floor_uses_maximum_of_server_and_local_minimum(server_retry, expected):
+    payload = json.dumps({"is": {"checks": [{"name": "LOW_SHARPE", "result": "PASS"}]}})
+    transport = _Transport([
+        CheckResponse(200, "", retry_after_seconds=server_retry),
+        CheckResponse(200, payload),
+    ])
+    waits = []
+    observed = []
+    out = semantic_poll_check(
+        transport, alpha_id="A1", phase="PRE_TAG", rules=_config().rules,
+        budget=CheckBudget(1, 4, 4, 1), wait=waits.append,
+        poll_observer=observed.append, min_retry_after_seconds=3.0,
+    )
+    assert out["session_status"] == "RESOLVED"
+    assert waits == [expected]
+    assert observed[0]["server_retry_after_seconds"] == server_retry
+    assert observed[0]["effective_retry_after_seconds"] == expected
+
+
+def test_qualified_retry_floor_does_not_shorten_429_global_cooldown_evidence():
+    out = semantic_poll_check(
+        _Transport([CheckResponse(
+            429, "", throttle_wait_seconds=60.0, retry_after_seconds=60.0,
+        )]),
+        alpha_id="A1", phase="PRE_TAG", rules=_config().rules,
+        budget=CheckBudget(1, 1, 1, 1), min_retry_after_seconds=3.0,
+        throttle_max_events=1,
+    )
+    assert out["throttle_wait_seconds"] == 60.0
+    assert out["polls"][0]["effective_retry_after_seconds"] is None
+    assert out["polls"][0]["server_retry_after_seconds"] == 60.0
 
 
 class _Response:
@@ -147,6 +187,142 @@ def _setup_candidate(tmp_path, *, run_id="run_0006", candidate_id="cand1", alpha
              state, "COMPLETE", alpha_id, now, now),
         )
     return cfg, store
+
+
+def _campaign_harness(tmp_path, monkeypatch, targets):
+    cfg = _config()
+    store = RunnerStore(tmp_path / "runner.db")
+    store.initialize(); store.create_run("run_0006", cfg); ensure_round_schema(store)
+    policy = load_round_policy(ROOT / "ppl_round_v31_d2e.yaml", cfg)
+    create_round(
+        store, round_id="round_run_0006", run_id="run_0006", policy=policy,
+        total_budget=2000, search_budget=1600, repair_budget=400,
+    )
+    import ppl_engine.round_orchestrator as ro
+    selector_calls = []
+
+    def select(*_args, **_kwargs):
+        selector_calls.append(True)
+        return {"targets": [dict(item) for item in targets], "skipped": []}
+
+    monkeypatch.setattr(ro, "_qualified_check_refresh_targets", select)
+    monkeypatch.setattr(ro, "_sync_qualified_refresh_resolution", lambda *_a, **_k: None)
+    monkeypatch.setattr(ro, "_write_reports", lambda *_a, **_k: {})
+    monkeypatch.setattr(ro, "round_status", lambda *_a, **_k: {
+        "ppl_classification": {"counts": {}, "ready_for_manual_finalization": []},
+    })
+    preflight = {
+        "run_id": "run_0006", "round": {"round_id": "round_run_0006", "status": "PAUSED"},
+        "stored_policy": policy, "current_policy": policy, "hash_result": {},
+    }
+    kwargs = dict(
+        store=store, config=cfg, machine=object(), session=object(),
+        alpha_db=tmp_path / "alpha.db", machine_path=ROOT / "machine_lib_V2_1.py",
+        round_policy_path=ROOT / "ppl_round_v31_d2e.yaml", project_dir=tmp_path,
+        run_id="run_0006", preflight=preflight,
+    )
+    return store, ro, selector_calls, kwargs
+
+
+def _target(name):
+    return {
+        "candidate_id": name, "alpha_id": f"alpha_{name}",
+        "classification": "PPL_CHECK_UNRESOLVED", "lifecycle_state": "PRE_TAG_CHECK_PENDING",
+        "sharpe": 1.0, "fitness": 1.0, "turnover": 0.5, "signal_family": name,
+    }
+
+
+def _resolved_report(candidate_id):
+    return {
+        "executed": True, "candidate_id": candidate_id, "alpha_id": f"alpha_{candidate_id}",
+        "session_status": "RESOLVED", "http_request_count": 1,
+        "base_gate": "PASS", "theme_gate": "PASS", "error_type": None,
+    }
+
+
+def test_campaign_resume_after_keyboard_interrupt_skips_durable_resolved_targets(tmp_path, monkeypatch):
+    targets = [_target(name) for name in "ABCD"]
+    store, ro, selector_calls, kwargs = _campaign_harness(tmp_path, monkeypatch, targets)
+    calls = []
+    interrupted = {"enabled": True}
+
+    def refresh(*_args, **call_kwargs):
+        cid = _args[5]
+        if interrupted["enabled"] and cid == "C":
+            raise KeyboardInterrupt()
+        calls.append(cid)
+        return _resolved_report(cid)
+
+    monkeypatch.setattr(ro, "refresh_one_pretag_check", refresh)
+    with pytest.raises(KeyboardInterrupt):
+        refresh_qualified_checks(**kwargs)
+    assert calls == ["A", "B"]
+    active = _load_active_qualified_refresh_campaign(store, "run_0006", "round_run_0006")
+    assert active["total_count"] == 4
+    assert active["resolved_keys"] == {("A", "alpha_A"), ("B", "alpha_B")}
+
+    interrupted["enabled"] = False
+    calls.clear()
+    out = refresh_qualified_checks(**kwargs)
+    assert calls == ["C", "D"]
+    assert out["campaign_resumed"] is True
+    assert out["target_count"] == 4
+    assert out["durable_resolved_count"] == 4 and out["pending_count"] == 0
+    assert out["campaign_status"] == "COMPLETED"
+    assert out["network_counters"]["simulation_post_count"] == 0
+    assert len(selector_calls) == 1
+
+
+def test_completed_campaign_does_not_permanently_exclude_historical_resolved_alpha(tmp_path, monkeypatch):
+    store, ro, selector_calls, kwargs = _campaign_harness(tmp_path, monkeypatch, [_target("A")])
+    calls = []
+    monkeypatch.setattr(ro, "refresh_one_pretag_check", lambda *_a, **_k: (
+        calls.append(_a[5]) or _resolved_report(_a[5])
+    ))
+    first = refresh_qualified_checks(**kwargs)
+    second = refresh_qualified_checks(**kwargs)
+    assert calls == ["A", "A"]
+    assert first["campaign_id"] != second["campaign_id"]
+    assert first["campaign_resumed"] is False and second["campaign_resumed"] is False
+    assert len(selector_calls) == 2
+
+
+def test_budget_exhausted_remains_pending_and_is_retried_on_resume(tmp_path, monkeypatch):
+    store, ro, selector_calls, kwargs = _campaign_harness(tmp_path, monkeypatch, [_target("A")])
+    calls = []
+    outcomes = [
+        {"executed": True, "candidate_id": "A", "alpha_id": "alpha_A",
+         "session_status": "BUDGET_EXHAUSTED", "error_type": "BUDGET_EXHAUSTED",
+         "error_nature": "UNKNOWN", "http_request_count": 40},
+        _resolved_report("A"),
+    ]
+
+    def refresh(*_args, **_kwargs):
+        calls.append(_args[5])
+        return outcomes.pop(0)
+
+    monkeypatch.setattr(ro, "refresh_one_pretag_check", refresh)
+    first = refresh_qualified_checks(**kwargs)
+    assert first["campaign_status"] == "ACTIVE"
+    assert first["pending_count"] == 1 and first["deferred_count"] == 1
+    second = refresh_qualified_checks(**kwargs)
+    assert calls == ["A", "A"]
+    assert second["campaign_resumed"] is True and second["campaign_status"] == "COMPLETED"
+    assert len(selector_calls) == 1
+
+
+def test_force_refresh_supersedes_active_campaign_and_takes_new_snapshot(tmp_path, monkeypatch):
+    store, ro, selector_calls, kwargs = _campaign_harness(tmp_path, monkeypatch, [_target("A")])
+    monkeypatch.setattr(ro, "refresh_one_pretag_check", lambda *_a, **_k: {
+        "executed": True, "candidate_id": "A", "alpha_id": "alpha_A",
+        "session_status": "BUDGET_EXHAUSTED", "error_type": "BUDGET_EXHAUSTED",
+        "http_request_count": 1,
+    })
+    first = refresh_qualified_checks(**kwargs)
+    second = refresh_qualified_checks(**kwargs, force_new_campaign=True)
+    assert first["campaign_id"] != second["campaign_id"]
+    assert second["campaign_resumed"] is False
+    assert len(selector_calls) == 2
 
 
 def test_continuous_queue_marks_200_empty_body_as_retry_not_json_error(tmp_path):
@@ -192,6 +368,23 @@ def test_qualified_refresh_preflight_requires_paused_round_and_run(tmp_path):
     )
     assert out["qualified_refresh_preflight"] is True
     assert out["round"]["status"] == "PAUSED"
+
+
+def test_d2e_policy_sets_safe_qualified_refresh_retry_floor():
+    cfg = _config()
+    policy = load_round_policy(ROOT / "ppl_round_v31_d2e.yaml", cfg)
+    assert parse_continuous_policy(policy).qualified_check_min_retry_after_seconds == 3.0
+
+
+def test_retry_floor_policy_upgrade_is_exactly_additive_and_other_drift_stays_closed():
+    cfg = _config()
+    current = load_round_policy(ROOT / "ppl_round_v31_d2e.yaml", cfg)
+    stored = copy.deepcopy(current)
+    stored["continuous"].pop("qualified_check_refresh")
+    assert _round_policy_upgrade_compatible(stored, current) is True
+    drifted = copy.deepcopy(current)
+    drifted["batch_size"] = int(drifted["batch_size"]) + 1
+    assert _round_policy_upgrade_compatible(stored, drifted) is False
 
 
 def test_qualified_target_selection_excludes_repair_state_and_ambiguous_alpha(tmp_path, monkeypatch):
@@ -252,3 +445,5 @@ def test_cli_qualified_refresh_preflight_is_before_authentication_and_uses_conti
     parser_source = inspect.getsource(ppl_runner._parser)
     assert "--refresh-qualified-checks" in parser_source
     assert "--qualified-check-limit" in parser_source
+    assert "--force-qualified-check-refresh" in parser_source
+    assert "force_new_campaign=args.force_qualified_check_refresh" in branch

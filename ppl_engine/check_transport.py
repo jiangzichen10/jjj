@@ -120,6 +120,7 @@ def semantic_poll_check(
     clock: Callable[[], float] = time.monotonic, store: Any = None,
     throttle_max_events: Optional[int] = None,
     poll_observer: Optional[Callable[[Mapping[str, Any]], None]] = None,
+    min_retry_after_seconds: float = 0.5,
 ) -> Dict[str, Any]:
     candidate_key = candidate_id or alpha_id
     if candidate_key not in budget.seen_candidates and budget.check_candidates >= budget.max_check_candidates:
@@ -159,9 +160,21 @@ def semantic_poll_check(
             )
         else:
             parsed = parse_response_text(response.text, phase=phase, rules=rules, evidence_source=evidence_source)
+        server_retry_after = getattr(response, "retry_after_seconds", None)
+        effective_retry_after = None
+        if parsed.get("parse_status") == "HTTP_200_EMPTY_BODY_RETRY":
+            try:
+                server_wait = float(server_retry_after) if server_retry_after is not None else interval
+            except (TypeError, ValueError):
+                server_wait = interval
+            effective_retry_after = max(
+                0.0, float(min_retry_after_seconds), server_wait,
+            )
         poll = {"semantic_poll_index": index, "http_request_count_delta": delta,
                 "http_status": response.http_status, "raw_response_text": response.text,
-                "retry_after_seconds": getattr(response, "retry_after_seconds", None),
+                "retry_after_seconds": server_retry_after,
+                "server_retry_after_seconds": server_retry_after,
+                "effective_retry_after_seconds": effective_retry_after,
                 "parsed": parsed, "created_at": _utc_now()}
         polls.append(poll); final = parsed
         if poll_observer is not None:
@@ -188,12 +201,8 @@ def semantic_poll_check(
         if index >= budget.max_poll_requests_per_candidate:
             status = "BUDGET_EXHAUSTED"; error_type = "BUDGET_EXHAUSTED"; error_nature = "UNKNOWN"; break
         budget.pending_poll_requests += 1
-        retry_after = getattr(response, "retry_after_seconds", None)
-        if parsed.get("parse_status") == "HTTP_200_EMPTY_BODY_RETRY" and retry_after is not None:
-            try:
-                wait_seconds = max(0.5, float(retry_after))
-            except (TypeError, ValueError):
-                wait_seconds = interval
+        if effective_retry_after is not None:
+            wait_seconds = effective_retry_after
         else:
             wait_seconds = interval
         wait(wait_seconds)

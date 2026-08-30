@@ -135,6 +135,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--lock", type=Path, default=PROJECT_DIR / "ppl_runner.lock")
     parser.add_argument("--run-id")
     parser.add_argument("--qualified-check-limit", type=int, default=0, help="optional cap for --refresh-qualified-checks; 0 means all qualified Alphas")
+    parser.add_argument("--force-qualified-check-refresh", action="store_true", help="start a new Qualified Check Refresh campaign instead of resuming the active campaign")
     parser.add_argument("--alpha-id", help="alpha id for --protect-alpha")
     parser.add_argument("--phase", choices=("10A", "10B"), help="live validation phase")
     parser.add_argument("--plan-id", action="append", default=[], help="explicit repair plan id (repeatable for a small explicit list)")
@@ -219,6 +220,8 @@ def main(argv=None) -> int:
             raise ConfigError("--qualified-check-limit requires --refresh-qualified-checks")
         if args.qualified_check_limit < 0:
             raise ConfigError("--qualified-check-limit must be >= 0")
+        if args.force_qualified_check_refresh and not args.refresh_qualified_checks:
+            raise ConfigError("--force-qualified-check-refresh requires --refresh-qualified-checks")
         if args.confirm_undispatched_repair_tail and not args.recover_interrupted_repair_batch:
             raise ConfigError("--confirm-undispatched-repair-tail requires --recover-interrupted-repair-batch")
         if args.live and not args.live_validate: raise ConfigError("--live is only valid with --live-validate")
@@ -307,6 +310,7 @@ def main(argv=None) -> int:
                         run_id=args.run_id, preflight=local_preflight,
                         authentication_post_count=authentication_post_count,
                         max_candidates=(args.qualified_check_limit or None),
+                        force_new_campaign=args.force_qualified_check_refresh,
                     )
                 finally:
                     session.close()
