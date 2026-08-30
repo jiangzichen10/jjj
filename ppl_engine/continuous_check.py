@@ -154,6 +154,23 @@ def _parsed_error(status: int) -> Dict[str, Any]:
     }
 
 
+def _empty_body_retry_parsed(*, phase: str, evidence_source: str, retry_after_seconds: Any = None) -> Dict[str, Any]:
+    return {
+        "phase": phase,
+        "parse_status": "HTTP_200_EMPTY_BODY_RETRY",
+        "results": [],
+        "pending_check_names": [],
+        "base_gate": {"status": "PENDING"},
+        "theme_gate": {"status": "PENDING"},
+        "session_semantic_status": "PENDING",
+        "error_type": "HTTP_200_EMPTY_BODY_RETRY",
+        "error_nature": "TRANSIENT",
+        "message": "HTTP 2xx /check response had an empty body; retry is required",
+        "evidence_source": evidence_source,
+        "retry_after_seconds": retry_after_seconds,
+    }
+
+
 def _save_one_poll(store: Any, *, run_id: str, candidate_id: str, alpha_id: str,
                    phase: str, status_code: int, text: str, parsed: Mapping[str, Any],
                    evidence_source: str) -> str:
@@ -251,6 +268,22 @@ def poll_due_checks(store: Any, config: Any, machine: Any, session: Any, run_id:
                     (attempt, status, f"HTTP_{status}", now, row["check_work_id"]),
                 )
             failed.append(cid); continue
+        if not text.strip():
+            wait = _retry_after(response, poll_interval_seconds)
+            parsed = _empty_body_retry_parsed(
+                phase=phase, evidence_source=evidence_source, retry_after_seconds=wait,
+            )
+            _save_one_poll(store, run_id=run_id, candidate_id=cid, alpha_id=alpha_id, phase=phase,
+                           status_code=status, text=text, parsed=parsed, evidence_source=evidence_source)
+            with store.connect() as conn:
+                conn.execute(
+                    """UPDATE ppl_check_work SET queue_state='WAIT_CHECK',next_check_at=?,attempt_count=?,
+                           last_http_status=?,last_error='HTTP_200_EMPTY_BODY_RETRY',retry_after_seconds=?,updated_at=?
+                           WHERE check_work_id=?""",
+                    (_after(wait), attempt, status, wait, now, row["check_work_id"]),
+                )
+            waits += 1
+            continue
         parsed = parse_response_text(text, phase=phase, rules=config.rules, evidence_source=evidence_source)
         _save_one_poll(store, run_id=run_id, candidate_id=cid, alpha_id=alpha_id, phase=phase,
                        status_code=status, text=text, parsed=parsed, evidence_source=evidence_source)

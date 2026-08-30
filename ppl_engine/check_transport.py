@@ -7,7 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol
 
 from .check_parser import parse_response_text
 
@@ -25,6 +25,11 @@ class CheckResponse:
     # operational back-pressure, not semantic polling time, so callers may
     # exclude it from the normal per-check timeout budget.
     throttle_wait_seconds: float = 0.0
+    # BRAIN may return HTTP 200 with an empty body plus Retry-After while a
+    # /check result is still being prepared. Preserve that protocol hint so
+    # semantic polling can retry the same Alpha in place instead of treating
+    # the empty body as a JSON parser failure.
+    retry_after_seconds: Optional[float] = None
 
 
 class CheckTransport(Protocol):
@@ -41,7 +46,14 @@ class V21CheckTransport:
         response = self.machine_lib._request_with_retry(
             self.session, "GET", f"{self.machine_lib.BRAIN_API_URL}/alphas/{alpha_id}/check"
         )
-        return CheckResponse(int(response.status_code), response.text, 1)
+        retry_after = None
+        try:
+            retry_after = response.headers.get("Retry-After")
+        except Exception:
+            retry_after = None
+        return CheckResponse(
+            int(response.status_code), response.text, 1, retry_after_seconds=retry_after,
+        )
 
 
 class MeteredSession:
@@ -72,6 +84,23 @@ class CheckBudget:
     sessions_by_candidate: Dict[str, int] = field(default_factory=dict)
 
 
+def _empty_body_retry_parsed(*, phase: str, evidence_source: str, retry_after_seconds: Any = None) -> Dict[str, Any]:
+    return {
+        "phase": phase,
+        "parse_status": "HTTP_200_EMPTY_BODY_RETRY",
+        "results": [],
+        "pending_check_names": [],
+        "base_gate": {"status": "PENDING"},
+        "theme_gate": {"status": "PENDING"},
+        "session_semantic_status": "PENDING",
+        "error_type": "HTTP_200_EMPTY_BODY_RETRY",
+        "error_nature": "TRANSIENT",
+        "message": "HTTP 2xx /check response had an empty body; retry is required",
+        "evidence_source": evidence_source,
+        "retry_after_seconds": retry_after_seconds,
+    }
+
+
 def _http_error(status: int) -> Dict[str, str]:
     if status == 429:
         return {"error_type": "HTTP_429", "error_nature": "TRANSIENT"}
@@ -90,6 +119,7 @@ def semantic_poll_check(
     evidence_source: str = "SYNTHETIC_TEST", wait: Callable[[float], None] = lambda _: None,
     clock: Callable[[], float] = time.monotonic, store: Any = None,
     throttle_max_events: Optional[int] = None,
+    poll_observer: Optional[Callable[[Mapping[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     candidate_key = candidate_id or alpha_id
     if candidate_key not in budget.seen_candidates and budget.check_candidates >= budget.max_check_candidates:
@@ -122,12 +152,25 @@ def semantic_poll_check(
             parsed = {"session_semantic_status": "TRANSIENT_ERROR", "parse_status": error["error_type"],
                       "results": [], "pending_check_names": [], "base_gate": {"status": "PENDING"},
                       "theme_gate": {"status": "PENDING"}, **error}
+        elif not str(response.text or "").strip():
+            parsed = _empty_body_retry_parsed(
+                phase=phase, evidence_source=evidence_source,
+                retry_after_seconds=getattr(response, "retry_after_seconds", None),
+            )
         else:
             parsed = parse_response_text(response.text, phase=phase, rules=rules, evidence_source=evidence_source)
         poll = {"semantic_poll_index": index, "http_request_count_delta": delta,
                 "http_status": response.http_status, "raw_response_text": response.text,
+                "retry_after_seconds": getattr(response, "retry_after_seconds", None),
                 "parsed": parsed, "created_at": _utc_now()}
         polls.append(poll); final = parsed
+        if poll_observer is not None:
+            try:
+                poll_observer(poll)
+            except Exception:
+                # Console progress is observational and must never alter Check
+                # polling, persistence, or final session semantics.
+                pass
         if int(response.http_status) == 429:
             throttle_events += 1
             if throttle_max_events is not None and throttle_events >= max(1, int(throttle_max_events)):
@@ -139,15 +182,29 @@ def semantic_poll_check(
             status = "BUDGET_EXHAUSTED"; error_type = "BUDGET_EXHAUSTED"; error_nature = "UNKNOWN"; break
         semantic = parsed.get("session_semantic_status")
         if semantic == "RESOLVED":
-            status = "RESOLVED"; break
+            status = "RESOLVED"; error_type = None; error_nature = None; break
         status = "TRANSIENT_ERROR" if semantic == "TRANSIENT_ERROR" else "PENDING"
         error_type = parsed.get("error_type"); error_nature = parsed.get("error_nature")
         if index >= budget.max_poll_requests_per_candidate:
             status = "BUDGET_EXHAUSTED"; error_type = "BUDGET_EXHAUSTED"; error_nature = "UNKNOWN"; break
         budget.pending_poll_requests += 1
-        wait(interval)
+        retry_after = getattr(response, "retry_after_seconds", None)
+        if parsed.get("parse_status") == "HTTP_200_EMPTY_BODY_RETRY" and retry_after is not None:
+            try:
+                wait_seconds = max(0.5, float(retry_after))
+            except (TypeError, ValueError):
+                wait_seconds = interval
+        else:
+            wait_seconds = interval
+        wait(wait_seconds)
     else:
         status = "BUDGET_EXHAUSTED"; error_type = "BUDGET_EXHAUSTED"
+    transient_errors = [
+        str((poll.get("parsed") or {}).get("error_type") or "")
+        for poll in polls
+        if str((poll.get("parsed") or {}).get("error_nature") or "").upper() == "TRANSIENT"
+        and str((poll.get("parsed") or {}).get("error_type") or "")
+    ]
     session = {
         "check_session_id": session_id, "run_id": run_id, "candidate_id": candidate_id,
         "alpha_id": alpha_id, "phase": phase, "session_status": status,
@@ -156,6 +213,8 @@ def semantic_poll_check(
         "pending_poll_requests": max(0, len(polls) - 1), "base_gate_result": (final or {}).get("base_gate", {}).get("status"),
         "theme_gate_result": (final or {}).get("theme_gate", {}).get("status"),
         "error_type": error_type, "error_nature": error_nature,
+        "transient_retry_seen": bool(transient_errors),
+        "last_transient_error": transient_errors[-1] if transient_errors else None,
         "throttle_wait_seconds": throttle_wait_total,
         "throttle_events": throttle_events,
         "polls": polls, "final": final,

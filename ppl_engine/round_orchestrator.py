@@ -56,6 +56,7 @@ from .live_execution import (
     MACHINE_HASH_OPERATION_MANUAL_REFRESH,
     MACHINE_HASH_OPERATION_RESUME,
     _alpha_facts,
+    _check_result_display_num,
     _instrument_v21,
     _sync_candidate_fact,
     _v21_candidate,
@@ -5863,6 +5864,296 @@ def preflight_manual_finalization_refresh(
         "run_id": run_id, "round_id": str(rr["round_id"]),
         "round": rr, "stored_policy": stored_policy, "current_policy": current_policy,
         "hash_result": hash_result, "policy_compatibility": policy_compatibility,
+    }
+
+
+_QUALIFIED_CHECK_REFRESH_CLASSIFICATIONS = {
+    "PPL_CHECK_UNRESOLVED",
+    "PPL_THEME_UNRESOLVED",
+    "PPL_TECHNICALLY_READY",
+    "PPL_READY_FOR_MANUAL_FINALIZATION",
+    "PPL_STRATEGY_REJECT_HIGH_PPC",
+    "PPL_STRATEGY_REJECT_MID_PPC_LOW_SHARPE",
+}
+_QUALIFIED_CHECK_REFRESH_LIFECYCLES = {
+    "PRE_TAG_CHECK_PENDING",
+    "PRE_TAG_CHECK_COMPLETE",
+    "PRE_TAG_CHECK_PASS",
+}
+
+
+def _qualified_check_poll_state(poll: Mapping[str, Any]) -> str:
+    """Format one compact Qualified Refresh GET observation; never include payload JSON."""
+    poll_no = int(poll.get("semantic_poll_index") or 0)
+    http_status = int(poll.get("http_status") or 0)
+    parsed = dict(poll.get("parsed") or {})
+    parse_status = str(parsed.get("parse_status") or "")
+    semantic = str(parsed.get("session_semantic_status") or "").upper()
+    retry_after = poll.get("retry_after_seconds")
+
+    def retry_suffix() -> str:
+        if retry_after is None:
+            return ""
+        try:
+            return f" | retry_after={float(retry_after):.1f}s"
+        except (TypeError, ValueError):
+            return " | retry_after=unknown"
+
+    if parse_status == "HTTP_200_EMPTY_BODY_RETRY":
+        return f"poll={poll_no} | HTTP {http_status} EMPTY{retry_suffix()}"
+    if http_status == 429:
+        return f"poll={poll_no} | HTTP 429{retry_suffix()} | THROTTLED"
+    if semantic == "RESOLVED":
+        results = {str(x.get("normalized_name") or ""): x for x in parsed.get("results", [])}
+        pp = results.get("POWER_POOL_CORRELATION")
+        ppc = _check_result_display_num(
+            pp, normalized_key="normalized_value", raw_json_key="raw_value_json", raw_key="raw_value",
+        )
+        suffix = f" | PPC={ppc:g}" if ppc is not None else ""
+        return f"poll={poll_no} | RESOLVED{suffix}"
+    return f"poll={poll_no} | HTTP {http_status} | {semantic or parse_status or 'PENDING'}"
+
+
+def preflight_qualified_check_refresh(
+    store: Any, config: Any, machine_path: Path, round_policy_path: Path, *, run_id: str,
+) -> Dict[str, Any]:
+    """Read-only safety gate for an explicit paused-run qualified Check refresh."""
+    out = dict(preflight_manual_finalization_refresh(
+        store, config, machine_path, round_policy_path, run_id=run_id,
+    ))
+    rr = dict(out["round"])
+    run = dict(store.get_run(run_id) or {})
+    if str(rr.get("status") or "").upper() != "PAUSED":
+        raise ConfigError("QUALIFIED_CHECK_REFRESH_REQUIRES_PAUSED_ROUND")
+    if run and str(run.get("status") or "").upper() != "PAUSED":
+        raise ConfigError("QUALIFIED_CHECK_REFRESH_REQUIRES_PAUSED_RUN")
+    out["run"] = run
+    out["qualified_refresh_preflight"] = True
+    return out
+
+
+def _qualified_check_refresh_targets(
+    store: Any, config: Any, alpha_db: Path, run_id: str, round_id: str,
+) -> Dict[str, Any]:
+    """Pick high-value PRE_TAG Alpha identities that are worth refreshing now.
+
+    Selection is intentionally workflow-aware: candidates that never passed the
+    local pre-gate (for example HIGH_TURNOVER repair parents) are not allowed to
+    consume /check capacity.  One platform GET is emitted per unambiguous Alpha
+    identity within the run; local candidate evidence is never guessed across
+    duplicate candidate identities.
+    """
+    candidates = {str(x.get("candidate_id")): dict(x) for x in store.load_candidates(run_id)}
+    classified = classify_run(store, config, alpha_db, run_id, emit_audit=False)
+    protected_cids, protected_alphas, protected_signals = _protected_manual_queue_sets(store, round_id)
+    by_alpha: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    skipped: List[Dict[str, Any]] = []
+
+    for raw in classified:
+        row = dict(raw)
+        classification = str(row.get("classification") or "")
+        if classification not in _QUALIFIED_CHECK_REFRESH_CLASSIFICATIONS:
+            continue
+        cid = str(row.get("candidate_id") or "")
+        cand = candidates.get(cid) or {}
+        lifecycle = str(cand.get("lifecycle_state") or "")
+        if lifecycle not in _QUALIFIED_CHECK_REFRESH_LIFECYCLES:
+            skipped.append({
+                "candidate_id": cid,
+                "alpha_id": str(row.get("alpha_id") or cand.get("alpha_id") or ""),
+                "reason": f"LIFECYCLE_NOT_QUALIFIED:{lifecycle}",
+            })
+            continue
+        alpha_id = str(row.get("alpha_id") or cand.get("alpha_id") or "").strip()
+        signal = str(cand.get("signal_family") or "")
+        if not alpha_id:
+            skipped.append({"candidate_id": cid, "reason": "ALPHA_ID_MISSING"})
+            continue
+        if cid in protected_cids or alpha_id in protected_alphas or (signal and signal in protected_signals):
+            skipped.append({"candidate_id": cid, "alpha_id": alpha_id, "reason": "PROTECTED_OR_SUBMITTED"})
+            continue
+        item = {
+            "candidate_id": cid,
+            "alpha_id": alpha_id,
+            "classification": classification,
+            "lifecycle_state": lifecycle,
+            "sharpe": float(row.get("sharpe") or 0.0),
+            "fitness": float(row.get("fitness") or 0.0),
+            "turnover": row.get("turnover"),
+            "signal_family": signal,
+        }
+        by_alpha[alpha_id].append(item)
+
+    targets: List[Dict[str, Any]] = []
+    for alpha_id, items in sorted(by_alpha.items()):
+        if len(items) != 1:
+            for item in items:
+                skipped.append({
+                    "candidate_id": item["candidate_id"], "alpha_id": alpha_id,
+                    "reason": "SAME_ALPHA_ID_MULTIPLE_CANDIDATES_NO_LOCAL_REUSE",
+                })
+            continue
+        targets.append(items[0])
+
+    targets.sort(key=lambda x: (
+        -float(x.get("sharpe") or 0.0),
+        -float(x.get("fitness") or 0.0),
+        float(x.get("turnover") if x.get("turnover") is not None else 999.0),
+        str(x.get("candidate_id") or ""),
+    ))
+    return {"targets": targets, "skipped": skipped}
+
+
+def _sync_qualified_refresh_resolution(
+    store: Any, run_id: str, candidate_id: str, alpha_id: str, report: Mapping[str, Any],
+) -> None:
+    """Close stale PRE_TAG work only after a fresh qualified refresh resolves."""
+    if str(report.get("session_status") or "").upper() != "RESOLVED":
+        return
+    now = _now()
+    with store.connect() as conn:
+        conn.execute(
+            """UPDATE ppl_check_work
+               SET queue_state='RESOLVED',next_check_at=NULL,last_error=NULL,
+                   retry_after_seconds=NULL,updated_at=?
+               WHERE run_id=? AND candidate_id=? AND alpha_id=? AND phase='PRE_TAG'""",
+            (now, run_id, candidate_id, alpha_id),
+        )
+    cand = next((dict(x) for x in store.load_candidates(run_id)
+                 if str(x.get("candidate_id") or "") == str(candidate_id)), None)
+    if not cand or str(cand.get("lifecycle_state") or "") != "PRE_TAG_CHECK_PENDING":
+        return
+    store.transition_candidate(
+        candidate_id, "PRE_TAG_CHECK_COMPLETE",
+        reason="Qualified GET-only PRE_TAG refresh resolved",
+        source="V31_QUALIFIED_CHECK_REFRESH", allowed=CANDIDATE_TRANSITIONS,
+    )
+    if str(report.get("base_gate") or "") == "PASS" and str(report.get("theme_gate") or "") == "PASS":
+        store.transition_candidate(
+            candidate_id, "PRE_TAG_CHECK_PASS",
+            reason="Qualified refresh resolved live PRE_TAG gates passed",
+            source="V31_QUALIFIED_CHECK_REFRESH", allowed=CANDIDATE_TRANSITIONS,
+        )
+
+
+def refresh_qualified_checks(
+    store: Any, config: Any, machine: Any, session: Any, alpha_db: Path, machine_path: Path,
+    round_policy_path: Path, project_dir: Path, *, run_id: str,
+    preflight: Optional[Mapping[str, Any]] = None, authentication_post_count: int = 0,
+    max_candidates: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Explicit paused-run GET-only refresh for all currently qualified Alphas."""
+    local_preflight = dict(preflight or preflight_qualified_check_refresh(
+        store, config, machine_path, round_policy_path, run_id=run_id,
+    ))
+    if str(local_preflight.get("run_id")) != str(run_id):
+        raise ConfigError("QUALIFIED_CHECK_REFRESH_PREFLIGHT_RUN_MISMATCH")
+    rr = dict(local_preflight["round"])
+    round_id = str(rr["round_id"])
+    # Reports must retain the durable run policy; semantic compatibility with
+    # the supplied current policy was already proven by preflight.
+    policy = dict(local_preflight["stored_policy"])
+    hash_result = dict(local_preflight["hash_result"])
+    selected = _qualified_check_refresh_targets(store, config, alpha_db, run_id, round_id)
+    targets = list(selected["targets"])
+    skipped = list(selected["skipped"])
+    if max_candidates is not None and int(max_candidates) > 0:
+        deferred = targets[int(max_candidates):]
+        targets = targets[:int(max_candidates)]
+        skipped.extend({
+            "candidate_id": x["candidate_id"], "alpha_id": x["alpha_id"],
+            "reason": "QUALIFIED_REFRESH_INVOCATION_LIMIT",
+        } for x in deferred)
+
+    max_http_requests = max(1, int(config.plan.get("budgets", {}).get("max_check_http_requests", 20000)))
+    reports: List[Dict[str, Any]] = []
+    used_http_requests = 0
+    stopped_reason: Optional[str] = None
+    progress_total = max(1, len(targets))
+
+    for index, target in enumerate(targets, 1):
+        cid = str(target["candidate_id"]); alpha_id = str(target["alpha_id"])
+        if used_http_requests >= max_http_requests:
+            stopped_reason = "CHECK_HTTP_BUDGET_EXHAUSTED"
+            break
+        _check_progress_line(
+            "QUALIFIED CHECK REFRESH", index - 1, progress_total,
+            candidate_id=cid, alpha_id=alpha_id,
+            state=f"START {index}/{len(targets)}",
+        )
+        def _qualified_poll_progress(poll: Mapping[str, Any]) -> None:
+            _check_progress_line(
+                "QUALIFIED CHECK REFRESH", index - 1, progress_total,
+                candidate_id=cid, alpha_id=alpha_id, state=_qualified_check_poll_state(poll),
+            )
+        try:
+            report = refresh_one_pretag_check(
+                store, config, machine, session, run_id, cid,
+                source="V31_QUALIFIED_CHECK_REFRESH",
+                evidence_source="LIVE_CHECK_REFRESH_QUALIFIED",
+                poll_observer=_qualified_poll_progress,
+            )
+        except Exception as exc:
+            report = {
+                "executed": False, "candidate_id": cid, "alpha_id": alpha_id,
+                "session_status": "TRANSIENT_ERROR",
+                "error_type": type(exc).__name__, "error_nature": "TRANSIENT",
+                "error": f"{type(exc).__name__}: {exc}", "http_request_count": 0,
+            }
+        report = dict(report)
+        report["selection"] = dict(target)
+        reports.append(report)
+        used_http_requests += int(report.get("http_request_count") or 0)
+        _sync_qualified_refresh_resolution(store, run_id, cid, alpha_id, report)
+        _check_progress_line(
+            "QUALIFIED CHECK REFRESH", index, progress_total,
+            candidate_id=cid, alpha_id=alpha_id,
+            state=str(report.get("session_status") or "DONE"),
+        )
+        error_type = str(report.get("error_type") or "")
+        if error_type in {"HTTP_429_THROTTLE_DEFERRED", "HTTP_429"}:
+            stopped_reason = error_type
+            break
+
+    processed_ids = {str(x.get("candidate_id") or "") for x in reports}
+    if stopped_reason:
+        for target in targets:
+            if str(target["candidate_id"]) not in processed_ids:
+                skipped.append({
+                    "candidate_id": target["candidate_id"], "alpha_id": target["alpha_id"],
+                    "reason": f"NOT_ATTEMPTED_AFTER_STOP:{stopped_reason}",
+                })
+
+    record_event(
+        store, round_id, run_id, "QUALIFIED_CHECK_REFRESH",
+        batch_no=int((get_round(store, round_id=round_id) or {}).get("current_batch") or 0),
+        phase=str((get_round(store, round_id=round_id) or {}).get("phase") or "SEARCH"),
+        payload={
+            "requested": len(targets), "executed": sum(bool(x.get("executed")) for x in reports),
+            "resolved": sum(str(x.get("session_status") or "").upper() == "RESOLVED" for x in reports),
+            "http_request_count": used_http_requests, "stopped_reason": stopped_reason,
+            "skipped": skipped, "simulation_posts": 0, "property_writes": 0,
+            "submit_requests": 0, "business_methods": ["GET"],
+        },
+    )
+    files = _write_reports(store, config, alpha_db, run_id, round_id, policy, project_dir)
+    after = round_status(store, config, alpha_db, run_id=run_id, round_id=round_id)
+    return {
+        "project_version": "v3.1", "action": "REFRESH_QUALIFIED_CHECKS",
+        "run_id": run_id, "round_id": round_id, "round_status": str(rr.get("status") or ""),
+        "target_count": len(targets), "executed_check_count": sum(bool(x.get("executed")) for x in reports),
+        "resolved_check_count": sum(str(x.get("session_status") or "").upper() == "RESOLVED" for x in reports),
+        "http_request_count": used_http_requests, "stopped_reason": stopped_reason,
+        "reports": reports, "skipped": skipped,
+        "classification_counts_after_refresh": after.get("ppl_classification", {}).get("counts", {}),
+        "ready_after_refresh": after.get("ppl_classification", {}).get("ready_for_manual_finalization"),
+        "reports_written": files, "machine_hash": hash_result,
+        "network_counters": {
+            "authentication_post_count": int(authentication_post_count),
+            "simulation_post_count": 0, "delete_count": 0, "submit_count": 0,
+            "power_pool_selected_count": 0, "repair_post_count": 0,
+            "business_methods": ["GET"],
+        },
     }
 
 

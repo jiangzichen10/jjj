@@ -121,7 +121,15 @@ class MeteredLiveCheckTransport:
                     maximum=self._runtime_float("check_429_max_cooldown_seconds",600),
                     multiplier=self._runtime_float("check_429_backoff_multiplier",2.0),
                 )
-            return CheckResponse(status,r.text,max(1,self.safe.request_count-before),waited)
+            retry_after = None
+            try:
+                retry_after = r.headers.get("Retry-After")
+            except Exception:
+                retry_after = None
+            return CheckResponse(
+                status, r.text, max(1, self.safe.request_count-before), waited,
+                retry_after_seconds=retry_after,
+            )
         except Exception as exc:
             status=getattr(exc,"status_code",None)
             category=str(getattr(exc,"category","") or "")
@@ -140,7 +148,10 @@ class MeteredLiveCheckTransport:
                         multiplier=self._runtime_float("check_429_backoff_multiplier",2.0),
                     )
                     print(f"[CHECK 429] throttled; next GET cooldown {cooldown:.1f}s",flush=True)
-                return CheckResponse(status,body,max(1,self.safe.request_count-before),waited)
+                return CheckResponse(
+                    status, body, max(1, self.safe.request_count-before), waited,
+                    retry_after_seconds=retry_after,
+                )
             if category == "NETWORK_ERROR":
                 return CheckResponse(599,body,max(1,self.safe.request_count-before),waited)
             raise

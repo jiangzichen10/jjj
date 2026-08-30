@@ -15,7 +15,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
 
 from .config import (
@@ -254,6 +254,20 @@ def _json_num(value: Any) -> Optional[float]:
         return float(parsed) if isinstance(parsed, (int, float)) else None
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def _check_result_display_num(item: Optional[Mapping[str, Any]], *,
+                              normalized_key: str, raw_json_key: str,
+                              raw_key: str) -> Optional[float]:
+    """Read a display number without changing durable Check result semantics."""
+    if not item:
+        return None
+    value = item.get(normalized_key)
+    if value is None:
+        value = item.get(raw_json_key)
+    if value is None:
+        value = item.get(raw_key)
+    return _json_num(value)
 
 
 def _alpha_facts(alpha_db: Path, sim_keys: Iterable[str]) -> Dict[str, Dict[str, Any]]:
@@ -735,7 +749,8 @@ def run_one_pretag_check(store: Any, config: Any, machine: Any, session: Any, ru
 
 def refresh_one_pretag_check(store: Any, config: Any, machine: Any, session: Any, run_id: str,
                              candidate_id: str, *, source: str = "MANUAL_FINALIZATION_REFRESH",
-                             evidence_source: str = "LIVE_CHECK_REFRESH") -> Dict[str, Any]:
+                             evidence_source: str = "LIVE_CHECK_REFRESH",
+                             poll_observer: Optional[Callable[[Mapping[str, Any]], None]] = None) -> Dict[str, Any]:
     """Refresh one existing Alpha's PRE_TAG /check without changing lifecycle.
 
     This is deliberately GET-only. It appends a new durable check session so
@@ -761,6 +776,7 @@ def refresh_one_pretag_check(store: Any, config: Any, machine: Any, session: Any
         budget=budget, candidate_id=candidate_id, run_id=run_id,
         evidence_source=evidence_source, wait=time.sleep, store=store,
         throttle_max_events=max(1, int(runtime.get("check_429_max_events_per_session", 4))),
+        poll_observer=poll_observer,
     )
     final = check.get("final") or {}
     results = {str(x.get("normalized_name")): x for x in final.get("results", [])}
@@ -772,8 +788,12 @@ def refresh_one_pretag_check(store: Any, config: Any, machine: Any, session: Any
         "run_id": run_id, "candidate_id": candidate_id, "alpha_id": row["alpha_id"],
         "session_status": check.get("session_status"), "poll_count": check.get("poll_count"),
         "http_request_count": check.get("http_request_count"), "base_gate": base, "theme_gate": theme,
-        "pp_corr_value": _json_num(pp.get("raw_value_json")) if pp else None,
-        "pp_corr_limit": _json_num(pp.get("raw_limit_json")) if pp else None,
+        "pp_corr_value": _check_result_display_num(
+            pp, normalized_key="normalized_value", raw_json_key="raw_value_json", raw_key="raw_value",
+        ),
+        "pp_corr_limit": _check_result_display_num(
+            pp, normalized_key="normalized_limit", raw_json_key="raw_limit_json", raw_key="raw_limit",
+        ),
         "pp_corr_outcome": pp.get("eligibility_outcome") if pp else None,
         "sub_universe_value": _json_num(sub.get("raw_value_json")) if sub else None,
         "sub_universe_limit": _json_num(sub.get("raw_limit_json")) if sub else None,
@@ -789,7 +809,11 @@ def refresh_one_pretag_check(store: Any, config: Any, machine: Any, session: Any
         "executed": True, "count": 1, "candidate_id": candidate_id, "alpha_id": row["alpha_id"],
         "session_status": check.get("session_status"), "poll_count": check.get("poll_count"),
         "http_request_count": check.get("http_request_count"), "base_gate": base, "theme_gate": theme,
-        "pp_corr_value": summary["pp_corr_value"], "pp_corr_outcome": summary["pp_corr_outcome"],
+        "error_type": check.get("error_type"), "error_nature": check.get("error_nature"),
+        "transient_retry_seen": bool(check.get("transient_retry_seen")),
+        "last_transient_error": check.get("last_transient_error"),
+        "pp_corr_value": summary["pp_corr_value"], "pp_corr_limit": summary["pp_corr_limit"],
+        "pp_corr_outcome": summary["pp_corr_outcome"],
         "sub_universe_outcome": summary["sub_universe_outcome"],
         "raw_names": [x.get("raw_name") for x in final.get("results", [])],
         "eligibility_outcomes": {x.get("raw_name"): x.get("eligibility_outcome") for x in final.get("results", [])},

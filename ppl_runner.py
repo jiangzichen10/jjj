@@ -115,6 +115,7 @@ def _parser() -> argparse.ArgumentParser:
     action.add_argument("--backfill-ppc-repair-outcomes", action="store_true", help="preview or locally backfill missing durable PP_CORRELATION_FAIL repair outcomes; no network/POST")
     action.add_argument("--protect-alpha", action="store_true", help="locally protect a user-confirmed submitted alpha family from future repair selection")
     action.add_argument("--refresh-manual-finalization", action="store_true", help="GET-only refresh of every row currently in manual_finalization_queue.csv, then rebuild classification/reports")
+    action.add_argument("--refresh-qualified-checks", action="store_true", help="paused-run GET-only refresh of all currently qualified PRE_TAG Alphas, then rebuild classification/reports")
     action.add_argument("--recover-interrupted-batch", action="store_true", help="locally release a human-confirmed never-dispatched tail from one interrupted or SERVER-SLOT-deferred V3 SEARCH batch; no network/POST")
     action.add_argument("--recover-interrupted-repair-batch", action="store_true", help="locally release a fully-proven never-dispatched V3 REPAIR batch intent; no network/POST")
     action.add_argument("--repair-interrupted-batch-ledger", action="store_true", help="locally repair research-ledger batch attribution for durable candidates of one interrupted SEARCH batch; no network/POST")
@@ -133,6 +134,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--state", type=Path, default=PROJECT_DIR / "ppl_state.json")
     parser.add_argument("--lock", type=Path, default=PROJECT_DIR / "ppl_runner.lock")
     parser.add_argument("--run-id")
+    parser.add_argument("--qualified-check-limit", type=int, default=0, help="optional cap for --refresh-qualified-checks; 0 means all qualified Alphas")
     parser.add_argument("--alpha-id", help="alpha id for --protect-alpha")
     parser.add_argument("--phase", choices=("10A", "10B"), help="live validation phase")
     parser.add_argument("--plan-id", action="append", default=[], help="explicit repair plan id (repeatable for a small explicit list)")
@@ -176,7 +178,7 @@ def main(argv=None) -> int:
     try:
         if args.extension_evidence_run and not (args.start_round or args.continuous):
             raise ConfigError("--extension-evidence-run is only valid with --start-round or a new --continuous run")
-        selected_plan = args.continuous_plan if (args.continuous or args.scheduler_evidence_report) else args.round_plan if (
+        selected_plan = args.continuous_plan if (args.continuous or args.scheduler_evidence_report or args.refresh_qualified_checks) else args.round_plan if (
     args.start_round
     or args.resume_round
     or args.reopen_round_after_bugfix
@@ -213,6 +215,10 @@ def main(argv=None) -> int:
             raise ConfigError("--confirm-cancel-simulation requires --cancel-simulation")
         if args.confirm_ppc_outcome_backfill and not args.backfill_ppc_repair_outcomes:
             raise ConfigError("--confirm-ppc-outcome-backfill requires --backfill-ppc-repair-outcomes")
+        if args.qualified_check_limit and not args.refresh_qualified_checks:
+            raise ConfigError("--qualified-check-limit requires --refresh-qualified-checks")
+        if args.qualified_check_limit < 0:
+            raise ConfigError("--qualified-check-limit must be >= 0")
         if args.confirm_undispatched_repair_tail and not args.recover_interrupted_repair_batch:
             raise ConfigError("--confirm-undispatched-repair-tail requires --recover-interrupted-repair-batch")
         if args.live and not args.live_validate: raise ConfigError("--live is only valid with --live-validate")
@@ -275,6 +281,32 @@ def main(argv=None) -> int:
                         PROJECT_DIR / "machine_lib_V2_1.py", args.round_policy, PROJECT_DIR,
                         run_id=args.run_id, preflight=local_preflight,
                         authentication_post_count=authentication_post_count,
+                    )
+                finally:
+                    session.close()
+            print(json.dumps(report, ensure_ascii=False, indent=2)); return 0
+        if args.refresh_qualified_checks:
+            from ppl_engine.round_orchestrator import (
+                preflight_qualified_check_refresh, refresh_qualified_checks,
+            )
+            if not args.run_id:
+                raise ConfigError("--refresh-qualified-checks requires --run-id")
+            if not store.path.exists():
+                raise ConfigError("ppl_runner.db does not exist")
+            import machine_lib_V2_1 as machine_lib
+            with SingleRunnerLock(args.lock):
+                local_preflight = preflight_qualified_check_refresh(
+                    store, config, PROJECT_DIR / "machine_lib_V2_1.py", args.continuous_policy,
+                    run_id=args.run_id,
+                )
+                session, authentication_post_count = _login_with_authentication_meter(machine_lib)
+                try:
+                    report = refresh_qualified_checks(
+                        store, config, machine_lib, session, PROJECT_DIR / "alpha_results.db",
+                        PROJECT_DIR / "machine_lib_V2_1.py", args.continuous_policy, PROJECT_DIR,
+                        run_id=args.run_id, preflight=local_preflight,
+                        authentication_post_count=authentication_post_count,
+                        max_candidates=(args.qualified_check_limit or None),
                     )
                 finally:
                     session.close()
