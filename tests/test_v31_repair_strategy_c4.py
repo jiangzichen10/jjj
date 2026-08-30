@@ -57,4 +57,6 @@ def test_c4_repair_strategy_module_has_no_durable_or_http_primitives():
     assert 'requests' not in imported
     assert 'connect' not in called_attrs
     src = inspect.getsource(ro._select_repair_batch)
-    assert 'rank_repair_candidates(' in src
+    core = inspect.getsource(ro._evaluate_repair_eligibility_core)
+    assert '_evaluate_repair_eligibility_core(' in src
+    assert 'rank_repair_candidates(' in core

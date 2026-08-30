@@ -15,7 +15,7 @@ from .strategy_contracts import SchedulerActionType
 
 
 SHADOW_ONLY_MODE = "SHADOW_ONLY"
-DEFAULT_SHADOW_POLICY_VERSION = "V31_SCHED_SHADOW_004"
+DEFAULT_SHADOW_POLICY_VERSION = "V31_SCHED_SHADOW_005"
 
 
 @dataclass(frozen=True)

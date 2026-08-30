@@ -983,7 +983,8 @@ def _failure_from_blocker(check_name: Optional[str]) -> str:
 
 
 def preview_rescue(store: Any, config: Any, alpha_db: Path, run_id: str, candidate_id: str,
-                   external_evidence: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                   external_evidence: Optional[List[Dict[str, Any]]] = None, *,
+                   emit_audit: bool = True) -> Dict[str, Any]:
     """Preview a single candidate's rescue classification + recommendation."""
     ctx = build_rescue_context(store, config, alpha_db, run_id)
     cand = ctx["candidates"].get(candidate_id)
@@ -1130,7 +1131,7 @@ def preview_rescue(store: Any, config: Any, alpha_db: Path, run_id: str, candida
     if ht_ratio_auto_repair_disabled:
         stop_reason = "NO_AUTO_REPAIR_HT_RATIO"
 
-    if external_success is not None:
+    if emit_audit and external_success is not None:
         audit_event(
             action="EXTERNAL_RESCUE_EVIDENCE", run_id=run_id, candidate_id=candidate_id,
             alpha_id=cand.get("alpha_id"), near_pass_class=cls["classification"],
@@ -1138,7 +1139,7 @@ def preview_rescue(store: Any, config: Any, alpha_db: Path, run_id: str, candida
             evidence_outcome=external_success.get("verdict"),
             external_target_value=external_success.get("child_value"), external_live_limit=external_success.get("live_limit"),
         )
-    if stop_reason:
+    if emit_audit and stop_reason:
         audit_event(
             action="RESCUE_STOPPED", run_id=run_id, candidate_id=candidate_id,
             alpha_id=cand.get("alpha_id"), near_pass_class=cls["classification"],
@@ -1158,16 +1159,17 @@ def preview_rescue(store: Any, config: Any, alpha_db: Path, run_id: str, candida
         and not external_alpha_id
         and not ht_ratio_auto_repair_disabled
     )
-    audit_event(
-        action="RESCUE_PREVIEW", run_id=run_id, candidate_id=candidate_id,
-        alpha_id=cand.get("alpha_id"), near_pass_class=cls["classification"],
-        rescue_target=current_rescue_target, recommended_strategy=(recommendation or {}).get("strategy"),
-        recommended_change=(recommendation or {}).get("change"), attempts_used=attempts,
-        attempts_remaining=max(0, max_attempts - attempts), max_attempts=max_attempts,
-        allowed_to_execute=allowed, stop_reason=stop_reason,
-        ppc_branch_anchor_candidate_id=ppc_anchor,
-        ppc_best_candidate_id=(ppc_state or {}).get("best_candidate_id"),
-    )
+    if emit_audit:
+        audit_event(
+            action="RESCUE_PREVIEW", run_id=run_id, candidate_id=candidate_id,
+            alpha_id=cand.get("alpha_id"), near_pass_class=cls["classification"],
+            rescue_target=current_rescue_target, recommended_strategy=(recommendation or {}).get("strategy"),
+            recommended_change=(recommendation or {}).get("change"), attempts_used=attempts,
+            attempts_remaining=max(0, max_attempts - attempts), max_attempts=max_attempts,
+            allowed_to_execute=allowed, stop_reason=stop_reason,
+            ppc_branch_anchor_candidate_id=ppc_anchor,
+            ppc_best_candidate_id=(ppc_state or {}).get("best_candidate_id"),
+        )
     return {
         "mode": "RESCUE_PREVIEW", "run_id": run_id, "candidate_id": candidate_id,
         "alpha_id": cand.get("alpha_id"),

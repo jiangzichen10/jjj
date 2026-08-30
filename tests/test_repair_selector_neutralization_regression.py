@@ -111,11 +111,31 @@ def test_round_selector_materializes_recommended_strategy_neutralization(monkeyp
 
     monkeypatch.setattr(ro, "_ensure_neutralization_plan", _fake_ensure)
 
+    monkeypatch.setattr(
+        ro,
+        "_virtual_neutralization_plan_row",
+        lambda *_a, **_k: {
+            "repair_plan_id": "rplan_neutralization_regression",
+            "run_id": "run_test",
+            "parent_candidate_id": "cand_pp_corr",
+            "repair_type": "NEUTRALIZATION_MICRO_TUNE",
+            "target_failure": "PP_CORRELATION_FAIL",
+            "repair_signature": "sig_neutralization_regression",
+            "plan_status": "PLANNED",
+            "consumed_posts": 0,
+            "_materialize": {
+                "strategy": "NEUTRALIZATION_MICRO_TUNE",
+                "target_failure": "PP_CORRELATION_FAIL",
+                "neutralization": "MARKET",
+            },
+        },
+    )
+
     preview_calls = []
 
-    def _fake_preview(store_arg, config, alpha_db, run_id, plan_ids, machine):
-        preview_calls.append(list(plan_ids))
-        assert plan_ids == ["rplan_neutralization_regression"]
+    def _fake_preview_rows(store_arg, config, alpha_db, run_id, plans, machine, *, emit_audit=False, enforce_global_repair_budget=False):
+        preview_calls.append([str(x["repair_plan_id"]) for x in plans])
+        assert [str(x["repair_plan_id"]) for x in plans] == ["rplan_neutralization_regression"]
         return {
             "items": [{
                 "repair_plan_id": "rplan_neutralization_regression",
@@ -124,7 +144,7 @@ def test_round_selector_materializes_recommended_strategy_neutralization(monkeyp
             "projected_new_posts": 1,
         }
 
-    monkeypatch.setattr(ro, "preview_production_repair", _fake_preview)
+    monkeypatch.setattr(ro, "preview_production_repair_plan_rows_read_only", _fake_preview_rows)
 
     policy = {
         "batch_size": 40,

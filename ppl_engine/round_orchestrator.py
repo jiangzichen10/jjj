@@ -70,7 +70,7 @@ from .operator_registry import build_project_operator_evidence
 from .production_repair import (
     execute_round_repair, preflight_round_repair_execution,
     preview_production_repair, preview_production_repair_read_only,
-    reconcile_completed_repair_outcomes,
+    preview_production_repair_plan_rows_read_only, reconcile_completed_repair_outcomes,
 )
 from .repair_engine import neutralization_micro_tune_spec, same_family_micro_tune_spec
 from .repair_engine import TURNOVER_STAGED_STRATEGIES, is_retired_auto_repair_plan
@@ -78,7 +78,7 @@ from .ppc_controlled_branch import (
     PPC_POLICY_NAME, PPC_POLICY_VERSION, PPC_TARGET_FAILURE, infer_ppc_branch_anchor, ppc_branch_config,
     ppc_branch_state, resolve_effective_window,
 )
-from .turnover_staged_repair import sync_turnover_staged_plans
+from .turnover_staged_repair import preview_turnover_staged_plans, sync_turnover_staged_plans
 from .round_store import (
     COMPLETED_RESEARCH_BATCH_STATUSES,
     create_round,
@@ -422,25 +422,31 @@ def _round_policy_upgrade_compatible(stored: Mapping[str, Any], current: Mapping
     stored_versions = dict(stored.get("policy_versions") or {})
     current_versions = dict(current.get("policy_versions") or {})
 
-    # OPEN1_EVIDENCE_GUARD_DURABLE_COMPAT
-    # Evidence-only semantic upgrade. Actual PHASE_COMPATIBILITY execution,
+    # OPEN1 Scheduler/Evidence semantic upgrades. These change only
+    # observational availability/evidence semantics; Actual PHASE_COMPATIBILITY,
     # Simulation POST identity, sim_key, durable URL, budgets and batch sizing
-    # remain unchanged. Accept ONLY an exact 003/002 -> 004/003 identity bump.
-    stored_shadow_open1 = dict(stored.get("scheduler_shadow") or {})
-    current_shadow_open1 = dict(current.get("scheduler_shadow") or {})
-    stored_evidence_open1 = dict(stored.get("scheduler_evidence") or {})
-    current_evidence_open1 = dict(current.get("scheduler_evidence") or {})
-    if (
-        str(stored_shadow_open1.get("policy_version") or "") == "V31_SCHED_SHADOW_003"
-        and str(current_shadow_open1.get("policy_version") or "") == "V31_SCHED_SHADOW_004"
-        and str(stored_evidence_open1.get("evidence_policy_version") or "") == "V31_SCHED_EVIDENCE_002"
-        and str(current_evidence_open1.get("evidence_policy_version") or "") == "V31_SCHED_EVIDENCE_003"
-    ):
+    # remain unchanged. Every allowed transition is exact-pair + full-policy
+    # byte-equivalence after reconstructing the stored identity.
+    stored_shadow_open1 = str((stored.get("scheduler_shadow") or {}).get("policy_version") or "")
+    current_shadow_open1 = str((current.get("scheduler_shadow") or {}).get("policy_version") or "")
+    stored_evidence_open1 = str((stored.get("scheduler_evidence") or {}).get("evidence_policy_version") or "")
+    current_evidence_open1 = str((current.get("scheduler_evidence") or {}).get("evidence_policy_version") or "")
+    stored_open1_identity = (stored_shadow_open1, stored_evidence_open1)
+    current_open1_identity = (current_shadow_open1, current_evidence_open1)
+    allowed_open1_transitions = {
+        (("V31_SCHED_SHADOW_003", "V31_SCHED_EVIDENCE_002"),
+         ("V31_SCHED_SHADOW_004", "V31_SCHED_EVIDENCE_003")),
+        (("V31_SCHED_SHADOW_003", "V31_SCHED_EVIDENCE_002"),
+         ("V31_SCHED_SHADOW_005", "V31_SCHED_EVIDENCE_004")),
+        (("V31_SCHED_SHADOW_004", "V31_SCHED_EVIDENCE_003"),
+         ("V31_SCHED_SHADOW_005", "V31_SCHED_EVIDENCE_004")),
+    }
+    if (stored_open1_identity, current_open1_identity) in allowed_open1_transitions:
         legacy_open1 = json.loads(_json(current))
         legacy_open1_shadow = dict(legacy_open1.get("scheduler_shadow") or {})
         legacy_open1_evidence = dict(legacy_open1.get("scheduler_evidence") or {})
-        legacy_open1_shadow["policy_version"] = "V31_SCHED_SHADOW_003"
-        legacy_open1_evidence["evidence_policy_version"] = "V31_SCHED_EVIDENCE_002"
+        legacy_open1_shadow["policy_version"] = stored_shadow_open1
+        legacy_open1_evidence["evidence_policy_version"] = stored_evidence_open1
         legacy_open1["scheduler_shadow"] = legacy_open1_shadow
         legacy_open1["scheduler_evidence"] = legacy_open1_evidence
         if _json(legacy_open1) == _json(stored):
@@ -472,6 +478,7 @@ def _round_policy_upgrade_compatible(stored: Mapping[str, Any], current: Mapping
         and legacy_scheduler_evidence_identity in {
             ("V31_SCHED_SHADOW_003", "V31_SCHED_EVIDENCE_002"),
             ("V31_SCHED_SHADOW_004", "V31_SCHED_EVIDENCE_003"),
+            ("V31_SCHED_SHADOW_005", "V31_SCHED_EVIDENCE_004"),
         }
     ):
         legacy_shadow["policy_version"] = stored_shadow["policy_version"]
@@ -741,12 +748,16 @@ def _migrate_round_policy_if_allowed(store: Any, round_id: str, run_id: str,
     elif "rolling_discovery" not in stored:
         change = "ROLLING_DATASET_DISCOVERY_ADDITIVE"
     elif (
-        (stored.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_003"
-        and (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_004"
-        and (stored.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_002"
-        and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_003"
+        ((stored.get("scheduler_shadow") or {}).get("policy_version"),
+         (stored.get("scheduler_evidence") or {}).get("evidence_policy_version"))
+        in {
+            ("V31_SCHED_SHADOW_003", "V31_SCHED_EVIDENCE_002"),
+            ("V31_SCHED_SHADOW_004", "V31_SCHED_EVIDENCE_003"),
+        }
+        and (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_005"
+        and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_004"
     ):
-        change = "OPEN1_FAIL_CLOSED_SHADOW_EVIDENCE_GUARD"
+        change = "OPEN1_SHARED_REPAIR_ELIGIBILITY_CORE"
     elif (
         (stored.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_002"
         and (stored.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_001"
@@ -758,6 +769,10 @@ def _migrate_round_policy_if_allowed(store: Any, round_id: str, run_id: str,
             or (
                 (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_004"
                 and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_003"
+            )
+            or (
+                (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_005"
+                and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_004"
             )
         )
     ):
@@ -4676,13 +4691,404 @@ def _direction_repair_value(item: Mapping[str, Any], policy: Mapping[str, Any]) 
     """Compatibility export; C5 Repair prioritization lives in repair_strategy."""
     return strategy_direction_repair_value(item, policy)
 
+
+def _proposal_to_virtual_plan_row(proposal: Mapping[str, Any], candidates: Mapping[str, Mapping[str, Any]]) -> Dict[str, Any]:
+    """Convert a persist=False Check proposal into Production Repair plan-row semantics."""
+    cid = str(proposal.get("parent_candidate_id") or "")
+    parent = dict(candidates.get(cid) or {})
+    spec = dict(proposal.get("candidate_spec") or {})
+    return {
+        "repair_plan_id": str(proposal.get("repair_plan_id") or ""),
+        "diagnosis_id": proposal.get("diagnosis_id"), "run_id": str(proposal.get("run_id") or ""),
+        "parent_candidate_id": cid, "root_candidate_id": parent.get("root_candidate_id") or cid,
+        "target_failure": proposal.get("target_failure"), "repair_type": proposal.get("repair_type"),
+        "repair_signature": proposal.get("repair_signature"),
+        "repair_path_json": _json(proposal.get("repair_path") or []),
+        "repair_depth": int(proposal.get("repair_depth") or 1),
+        "candidate_spec_json": _json(spec),
+        "operator_requirements_json": _json(proposal.get("operator_requirements") or []),
+        "plan_status": str(proposal.get("plan_status") or "PLANNED"),
+        "projected_new_posts": int(proposal.get("projected_new_posts") or 0),
+        "committed_posts": 0, "consumed_posts": 0, "blocked_reason": None,
+        "_virtual_source": "CHECK_DERIVED_PREVIEW",
+    }
+
+
+def _virtual_neutralization_plan_row(
+    store: Any, config: Any, run_id: str, candidate_id: str,
+    target_failure: str, neutralization: str,
+    candidates: Mapping[str, Mapping[str, Any]], existing_signatures: set,
+) -> Optional[Dict[str, Any]]:
+    parent = dict(candidates.get(candidate_id) or {})
+    if not parent:
+        return None
+    spec = neutralization_micro_tune_spec(parent, target_failure, neutralization)
+    if str(target_failure or "").upper() == PPC_TARGET_FAILURE:
+        spec.update(_ppc_spec_metadata(store, config, run_id, candidate_id))
+    signature = str(spec["repair_signature"])
+    if signature in existing_signatures:
+        return None
+    plan_id = "rplan_" + hashlib.sha256(f"{run_id}|{signature}".encode()).hexdigest()[:24]
+    return {
+        "repair_plan_id": plan_id, "diagnosis_id": None, "run_id": run_id,
+        "parent_candidate_id": candidate_id,
+        "root_candidate_id": parent.get("root_candidate_id") or candidate_id,
+        "target_failure": target_failure, "repair_type": spec["repair_type"],
+        "repair_signature": signature, "repair_path_json": _json(spec.get("repair_path", [])),
+        "repair_depth": int(spec.get("repair_depth") or 1), "candidate_spec_json": _json(spec),
+        "operator_requirements_json": "[]", "plan_status": "PLANNED",
+        "projected_new_posts": 1, "committed_posts": 0, "consumed_posts": 0,
+        "blocked_reason": None, "_virtual_source": "RESCUE_NEUTRALIZATION_PREVIEW",
+        "_materialize": {"strategy": "NEUTRALIZATION_MICRO_TUNE", "target_failure": target_failure,
+                         "neutralization": neutralization},
+    }
+
+
+def _virtual_same_family_micro_tune_plan_row(
+    store: Any, config: Any, run_id: str, candidate_id: str, target_failure: str,
+    candidates: Mapping[str, Mapping[str, Any]], existing_signatures: set,
+) -> Optional[Dict[str, Any]]:
+    parent = dict(candidates.get(candidate_id) or {})
+    if not parent or str(parent.get("operator") or "").lower() != "ts_mean":
+        return None
+    current = resolve_effective_window(parent)
+    if current is None:
+        return None
+    anchor = infer_ppc_branch_anchor(store, run_id, candidate_id)
+    if not anchor:
+        return None
+    state = ppc_branch_state(store, config, run_id, anchor)
+    visited_windows = {current}
+    anchor_row = candidates.get(anchor)
+    anchor_window = resolve_effective_window(anchor_row or {})
+    if anchor_window is not None:
+        visited_windows.add(anchor_window)
+    for row in state.get("branch_rows", []):
+        for cid in (row.get("parent_candidate_id"), row.get("child_candidate_id")):
+            w = resolve_effective_window(candidates.get(str(cid or "")) or {})
+            if w is not None:
+                visited_windows.add(w)
+        try:
+            old_spec = json.loads(row.get("candidate_spec_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            old_spec = {}
+        if old_spec.get("window_override") is not None:
+            try:
+                visited_windows.add(int(old_spec["window_override"]))
+            except (TypeError, ValueError):
+                pass
+    cfg = ppc_branch_config(config.rules)
+    if current not in cfg["same_family_windows"]:
+        return None
+    candidate_windows = [w for w in cfg["same_family_windows"] if w != current and w not in visited_windows]
+    if not candidate_windows:
+        return None
+    target_window = min(candidate_windows, key=lambda w: (abs(w - current), 0 if w > current else 1, w))
+    spec = same_family_micro_tune_spec(parent, target_failure, target_window)
+    spec.update(_ppc_spec_metadata(store, config, run_id, candidate_id))
+    if str(spec.get("expression_preview") or "") == str(parent.get("expression") or ""):
+        return None
+    signature = str(spec["repair_signature"])
+    if signature in existing_signatures:
+        return None
+    plan_id = "rplan_" + hashlib.sha256(f"{run_id}|{signature}".encode()).hexdigest()[:24]
+    return {
+        "repair_plan_id": plan_id, "diagnosis_id": None, "run_id": run_id,
+        "parent_candidate_id": candidate_id,
+        "root_candidate_id": parent.get("root_candidate_id") or candidate_id,
+        "target_failure": target_failure, "repair_type": spec["repair_type"],
+        "repair_signature": signature, "repair_path_json": _json(spec.get("repair_path", [])),
+        "repair_depth": int(spec.get("repair_depth") or 1), "candidate_spec_json": _json(spec),
+        "operator_requirements_json": _json(spec.get("operator_requirements", [])),
+        "plan_status": "PLANNED", "projected_new_posts": 1, "committed_posts": 0,
+        "consumed_posts": 0, "blocked_reason": None,
+        "_virtual_source": "RESCUE_SAME_FAMILY_PREVIEW",
+        "_materialize": {"strategy": "SAME_FAMILY_MICRO_TUNE", "target_failure": target_failure},
+    }
+
+
+def _read_only_repair_preparation(
+    store: Any, config: Any, alpha_db: Path, run_id: str, round_id: str,
+) -> Dict[str, Any]:
+    """Preview planning-only Repair rows without DB writes or network requests."""
+    candidates = {str(x.get("candidate_id")): dict(x) for x in store.load_candidates(run_id)}
+    durable = [dict(x) for x in store.load_repair_plans(run_id)]
+    signatures = {str(x.get("repair_signature") or "") for x in durable}
+    virtual: List[Dict[str, Any]] = []
+    check_preview = derive_check_repair_proposals(store, config, alpha_db, run_id, persist=False)
+    for proposal in check_preview.get("proposals", []):
+        row = _proposal_to_virtual_plan_row(proposal, candidates)
+        signature = str(row.get("repair_signature") or "")
+        if signature and signature not in signatures:
+            virtual.append(row); signatures.add(signature)
+    turnover_preview = preview_turnover_staged_plans(store, config, alpha_db, run_id, round_id)
+    for row in turnover_preview.get("virtual_plan_rows", []):
+        signature = str(row.get("repair_signature") or "")
+        if signature and signature not in signatures:
+            virtual.append(dict(row)); signatures.add(signature)
+    return {
+        "virtual_plan_rows": virtual,
+        "evaluation_complete": bool(turnover_preview.get("evaluation_complete", True)),
+        "incomplete_reasons": list(turnover_preview.get("incomplete_reasons") or []),
+        "network_requests": 0, "check_requests": 0, "writes": 0,
+    }
+
+
+def _evaluate_repair_eligibility_core(
+    store: Any, config: Any, alpha_db: Path, machine: Any, run_id: str,
+    round_id: str, policy: Mapping[str, Any], remaining: int,
+    external_evidence_path: Path, *, skip_uncertain: bool = False,
+    extra_plan_rows: Sequence[Mapping[str, Any]] = (), emit_audit: bool = False,
+) -> Dict[str, Any]:
+    """Shared complete Repair eligibility logic for Actual and Shadow.
+
+    The function never materializes RepairPlans, never performs HTTP, never
+    transitions workflow state, and never submits a Simulation.  ``emit_audit``
+    only preserves selector telemetry for the authoritative compatibility path.
+    """
+    if remaining <= 0:
+        return {"selected": [], "eligible_plan_ids": [], "selected_projected": 0,
+                "evaluation_complete": True, "materialization_rows": [], "ranked": [],
+                "direction_ranked": [], "direction_decisions": {}, "candidates": {},
+                "attempts": {}, "protected": set(), "preview_safe_plan_ids": []}
+    items = classify_run(store, config, alpha_db, run_id, emit_audit=emit_audit)
+    attempts = _repair_attempts_by_family(store, run_id, round_id)
+    protected = {w["family_id"] for w in load_winners(store, round_id) if int(w.get("protected") or 0)}
+    ext = load_external_evidence(external_evidence_path)
+    ranked_pool = [dict(x) for x in items if x.get("classification") in {
+        "PPL_FIXED_REPAIRABLE", "PPL_THEME_REPAIRABLE", "PPL_FIXED_AND_THEME_REPAIRABLE"
+    } and x.get("repair_priority") in {"HIGH", "MEDIUM"}]
+    ranked_pool = _ppc_controlled_ranked_pool(store, config, run_id, ranked_pool)
+    ranked = [dict(x) for x in rank_repair_candidates(ranked_pool, policy)]
+
+    durable = [dict(p) for p in store.load_repair_plans(run_id)]
+    plans_by_signature: Dict[str, Dict[str, Any]] = {}
+    plans_by_id: Dict[str, Dict[str, Any]] = {}
+    for source in list(durable) + [dict(x) for x in extra_plan_rows]:
+        sig = str(source.get("repair_signature") or "")
+        pid = str(source.get("repair_plan_id") or "")
+        if sig and sig in plans_by_signature:
+            continue
+        if pid and pid in plans_by_id:
+            continue
+        if sig: plans_by_signature[sig] = source
+        if pid: plans_by_id[pid] = source
+    plans = list(plans_by_id.values())
+    by_parent: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for plan in plans:
+        if not is_retired_auto_repair_plan(plan):
+            by_parent[str(plan.get("parent_candidate_id"))].append(plan)
+    candidates = {str(x["candidate_id"]): dict(x) for x in store.load_candidates(run_id)}
+
+    reverse_plans = [p for p in plans if str(p.get("repair_type") or "").upper() == "REVERSE_DIRECTION"
+                     and str(p.get("plan_status") or "") in EXECUTABLE_REPAIR_STATUSES
+                     and int(p.get("consumed_posts") or 0) == 0]
+    reverse_keys = [str((candidates.get(str(p.get("parent_candidate_id"))) or {}).get("sim_key") or "") for p in reverse_plans]
+    reverse_facts = _alpha_facts(alpha_db, [x for x in reverse_keys if x])
+    direction_ranked: List[Dict[str, Any]] = []
+    for plan in reverse_plans:
+        cid = str(plan.get("parent_candidate_id") or "")
+        parent = candidates.get(cid)
+        if not parent or not parent.get("sim_key"):
+            continue
+        fact = reverse_facts.get(str(parent.get("sim_key"))) or {}
+        dv = _direction_repair_value(fact, policy)
+        if int(dv.get("score") or 0) <= 0:
+            continue
+        direction_ranked.append({"candidate_id": cid, "plan": plan, "sharpe": dv.get("sharpe"),
+                                 "turnover": dv.get("turnover"), "round_direction_band": dv.get("band"),
+                                 "round_direction_score": int(dv.get("score") or 0)})
+    direction_ranked = [dict(x) for x in rank_direction_repair_candidates(direction_ranked)]
+
+    def plan_preview(plan: Mapping[str, Any], *, audit: bool) -> Dict[str, Any]:
+        return preview_production_repair_plan_rows_read_only(
+            store, config, alpha_db, run_id, [dict(plan)], machine,
+            emit_audit=bool(audit), enforce_global_repair_budget=bool(audit),
+        )
+
+    batch_size = int(effective_repair_allocation(policy)["batch_size"])
+    selected: List[str] = []
+    selected_projected = 0
+    used_families = set()
+    eligible_plan_ids: List[str] = []
+    eligible_families = set()
+    preview_safe_plan_ids: List[str] = []
+    materialization_rows: List[Dict[str, Any]] = []
+    direction_decisions: Dict[str, Dict[str, Any]] = {}
+    direction_selection_open = True
+
+    for item in direction_ranked:
+        cid = str(item["candidate_id"]); parent = candidates.get(cid)
+        if not parent: continue
+        fid = family_id(parent); signal = str(parent.get("signal_family") or "")
+        plan = item["plan"]; pid = str(plan.get("repair_plan_id") or "")
+        reason = None; projected = 0
+        if fid in protected: reason = "FAMILY_ALREADY_PROTECTED"
+        elif attempts.get(signal, 0) >= 1: reason = "DIRECTION_REPAIR_ALREADY_ATTEMPTED_FOR_FAMILY"
+        else:
+            try:
+                prev = plan_preview(plan, audit=(emit_audit and direction_selection_open))
+            except (ConfigError, ValueError) as exc:
+                reason = f"DIRECTION_REPAIR_PREVIEW_BLOCKED:{type(exc).__name__}"; prev = {}
+            if reason is None and not prev.get("items"): reason = "DIRECTION_REPAIR_PREVIEW_EMPTY"
+            if reason is None and skip_uncertain and any(str(x.get("required_action") or "") == "HOLD_UNCERTAIN" for x in (prev.get("items") or [])):
+                reason = "UNCERTAIN_SUBMISSION_LOCAL_QUARANTINE"
+            projected = int(prev.get("projected_new_posts") or 0) if reason is None else 0
+            if reason is None:
+                preview_safe_plan_ids.append(pid)
+                if signal not in eligible_families and projected <= remaining:
+                    eligible_plan_ids.append(pid); eligible_families.add(signal)
+                elif projected > remaining:
+                    reason = "REPAIR_BUDGET_REMAINING_TOO_SMALL"
+        decision_reason = reason
+        if direction_selection_open:
+            if reason is None and signal in used_families:
+                decision_reason = "ANOTHER_PARENT_FROM_FAMILY_SELECTED"
+            elif reason is None and selected_projected + projected <= remaining:
+                selected.append(pid); selected_projected += projected; used_families.add(signal)
+            elif reason is None:
+                decision_reason = "REPAIR_BUDGET_REMAINING_TOO_SMALL"
+            direction_decisions[cid] = {**item, "selected": pid in selected, "reason": decision_reason or pid}
+            if len(selected) >= batch_size:
+                direction_selection_open = False
+
+    existing_signatures = {str(p.get("repair_signature") or "") for p in plans}
+    normal_selection_open = True
+    for item in ranked:
+        cid = str(item["candidate_id"]); parent = candidates.get(cid)
+        if not parent: continue
+        fid = family_id(parent); signal = str(parent.get("signal_family") or "")
+        if fid in protected or signal in used_families:
+            continue
+        repair_planning = effective_repair_planning(policy)
+        cap = int(repair_planning["strong_near_pass_repair_cap_per_family"] if item.get("repair_priority") == "HIGH"
+                  else repair_planning["normal_near_pass_repair_cap_per_family"])
+        staged_for_parent = [p for p in by_parent.get(cid, []) if str(p.get("repair_type") or "") in TURNOVER_STAGED_STRATEGIES]
+        uncertain_retry_plans = [p for p in by_parent.get(cid, []) if str(p.get("blocked_reason") or "") == "UNCERTAIN_RETRY_AUTHORIZED"
+                                 and str(p.get("plan_status") or "") in EXECUTABLE_REPAIR_STATUSES
+                                 and int(p.get("consumed_posts") or 0) == 0]
+        is_ppc_branch = str(item.get("primary_failure") or "").upper() == PPC_TARGET_FAILURE
+        ppc_attempts_used = int(item.get("_ppc_attempts_used") or 0)
+        ppc_max_attempts = int(item.get("_ppc_max_attempts") or ppc_branch_config(config.rules)["max_attempts"])
+        cap_reached = (ppc_attempts_used >= ppc_max_attempts) if is_ppc_branch else (attempts.get(signal, 0) >= cap)
+        if cap_reached and not staged_for_parent and not uncertain_retry_plans:
+            continue
+        if not staged_for_parent and not uncertain_retry_plans:
+            rescue = preview_rescue(
+                store, config, alpha_db, run_id, cid, ext,
+                emit_audit=(emit_audit and normal_selection_open),
+            )
+            if not rescue.get("allowed_to_execute"):
+                continue
+            recommendation = rescue.get("recommendation")
+            if not isinstance(recommendation, Mapping):
+                legacy = rescue.get("recommended_strategy")
+                if isinstance(legacy, Mapping): recommendation = dict(legacy)
+                elif isinstance(legacy, str) and legacy:
+                    recommendation = {"strategy": legacy, "change": rescue.get("recommended_change") or {}}
+                else: recommendation = {}
+            virtual = None
+            if recommendation.get("strategy") == "NEUTRALIZATION_MICRO_TUNE":
+                target = (recommendation.get("change") or {}).get("neutralization")
+                rescue_failure = str(rescue.get("target_failure") or item.get("primary_failure") or "")
+                if target and rescue_failure != "HT_RETURNS_RATIO_FAIL":
+                    virtual = _virtual_neutralization_plan_row(store, config, run_id, cid, rescue_failure,
+                                                               str(target), candidates, existing_signatures)
+            elif recommendation.get("strategy") == "SAME_FAMILY_MICRO_TUNE":
+                rescue_failure = str(rescue.get("target_failure") or item.get("primary_failure") or "")
+                if rescue_failure == "PP_CORRELATION_FAIL":
+                    virtual = _virtual_same_family_micro_tune_plan_row(store, config, run_id, cid, rescue_failure,
+                                                                       candidates, existing_signatures)
+            if virtual is not None:
+                if normal_selection_open:
+                    materialization_rows.append(virtual)
+                plans.append(virtual); by_parent[cid].append(virtual)
+                existing_signatures.add(str(virtual.get("repair_signature") or ""))
+        candidate_plans = [p for p in by_parent.get(cid, []) if str(p.get("plan_status") or "") in EXECUTABLE_REPAIR_STATUSES
+                           and int(p.get("consumed_posts") or 0) == 0 and not is_retired_auto_repair_plan(p)
+                           and not (skip_uncertain and str(p.get("blocked_reason") or "") == "UNCERTAIN_SUBMISSION_HOLD")]
+        type_rank = {"NEUTRALIZATION_MICRO_TUNE": 0, "SAME_FAMILY_MICRO_TUNE": 1,
+                     "TURNOVER_DECAY_STEP_1": 2, "TURNOVER_DECAY_STEP_2": 2, "TURNOVER_HUMP": 2}
+        candidate_plans.sort(key=lambda p: (type_rank.get(str(p.get("repair_type")), 9), str(p.get("repair_plan_id"))))
+        chosen = None; best_preview = None
+        for plan in candidate_plans:
+            try:
+                prev = plan_preview(plan, audit=(emit_audit and normal_selection_open))
+            except (ConfigError, ValueError) as exc:
+                if emit_audit and normal_selection_open:
+                    audit_event(action="REPAIR_PREVIEW_BLOCKED", run_id=run_id, round_id=round_id,
+                                candidate_id=cid, repair_plan_id=str(plan.get("repair_plan_id") or ""),
+                                repair_strategy=str(plan.get("repair_type") or ""), reason=f"{type(exc).__name__}: {exc}")
+                continue
+            if not prev.get("items"): continue
+            action = prev["items"][0].get("required_action")
+            if skip_uncertain and str(action or "") == "HOLD_UNCERTAIN":
+                if emit_audit and normal_selection_open:
+                    audit_event(action="REPAIR_UNCERTAIN_QUARANTINED", run_id=run_id, round_id=round_id,
+                                candidate_id=cid, repair_plan_id=str(plan.get("repair_plan_id") or ""),
+                                repair_strategy=str(plan.get("repair_type") or ""),
+                                reason="UNCERTAIN_SUBMISSION_HOLD", simulation_posts=0, global_hold=False)
+                continue
+            action_rank = {"CACHE_COMPLETE": 0, "RESUME_EXISTING": 1, "CACHE_RESTORE": 0,
+                           "NEW_SIMULATION_REQUIRED": 2, "RETRY_PER_V21_POLICY": 3}.get(str(action), 4)
+            rank = (action_rank, type_rank.get(str(plan.get("repair_type")), 9))
+            if best_preview is None or rank < best_preview[0]:
+                best_preview = (rank, prev); chosen = plan
+        if not chosen:
+            continue
+        pid = str(chosen["repair_plan_id"])
+        projected = int((best_preview[1] if best_preview else {}).get("projected_new_posts") or 0)
+        preview_safe_plan_ids.append(pid)
+        if signal not in eligible_families and projected <= remaining:
+            eligible_plan_ids.append(pid); eligible_families.add(signal)
+        if normal_selection_open:
+            if selected_projected + projected > remaining:
+                continue
+            selected.append(pid); selected_projected += projected; used_families.add(signal)
+            if len(selected) >= batch_size:
+                normal_selection_open = False
+
+    return {
+        "selected": selected, "eligible_plan_ids": eligible_plan_ids,
+        "selected_projected": selected_projected, "materialization_rows": materialization_rows,
+        "ranked": ranked, "direction_ranked": direction_ranked, "direction_decisions": direction_decisions,
+        "candidates": candidates, "attempts": attempts, "protected": protected,
+        "preview_safe_plan_ids": preview_safe_plan_ids, "evaluation_complete": True,
+    }
+
+
+def _materialize_selector_virtual_plans(
+    store: Any, config: Any, run_id: str, rows: Sequence[Mapping[str, Any]],
+) -> None:
+    """Persist only rescue plans that the shared core deterministically derived."""
+    for row in rows:
+        materialize = dict(row.get("_materialize") or {})
+        strategy = str(materialize.get("strategy") or "")
+        cid = str(row.get("parent_candidate_id") or "")
+        expected = str(row.get("repair_plan_id") or "")
+        actual = None
+        if strategy == "NEUTRALIZATION_MICRO_TUNE":
+            actual = _ensure_neutralization_plan(
+                store, config, run_id, cid, str(materialize.get("target_failure") or ""),
+                str(materialize.get("neutralization") or ""),
+            )
+        elif strategy == "SAME_FAMILY_MICRO_TUNE":
+            actual = _ensure_same_family_micro_tune_plan(
+                store, config, run_id, cid, str(materialize.get("target_failure") or ""),
+            )
+        if expected and str(actual or "") != expected:
+            raise ConfigError(f"REPAIR_SELECTOR_VIRTUAL_PLAN_PARITY_MISMATCH:{expected}:{actual}")
+
+
 def _select_repair_batch(store: Any, config: Any, alpha_db: Path, machine: Any, run_id: str,
                          round_id: str, policy: Mapping[str, Any], remaining: int,
                          external_evidence_path: Path, *, batch_no: Optional[int] = None,
                          session: Any = None, skip_uncertain: bool = False) -> List[str]:
     if remaining <= 0:
         return []
-    # Persist check-derived proposals first. This is planning-only and idempotent.
+    # Authoritative preparation is planning-only/idempotent but may persist
+    # Check-derived and staged-turnover plans, and may perform an explicit GET-only
+    # turnover Check refresh.  Eligibility itself is delegated to the shared core.
     derive_check_repair_proposals(store, config, alpha_db, run_id, persist=True)
     staged = sync_turnover_staged_plans(
         store, config, alpha_db, run_id, round_id,
@@ -4697,255 +5103,32 @@ def _select_repair_batch(store: Any, config: Any, alpha_db: Path, machine: Any, 
     for item in staged.get("exhausted", []):
         record_event(
             store, round_id, run_id, "HIGH_TURNOVER_AUTO_REPAIR_EXHAUSTED",
-            batch_no=batch_no, phase="REPAIR",
-            family_id_value=item["origin_signal_family"],
+            batch_no=batch_no, phase="REPAIR", family_id_value=item["origin_signal_family"],
             payload=item,
             source_event_key=(
                 f"turnover_exhausted:{run_id}:{round_id}:"
                 f"{item['policy']}:{item['origin_signal_family']}"
             ),
         )
-    items = classify_run(store, config, alpha_db, run_id)
-    attempts = _repair_attempts_by_family(store, run_id, round_id)
-    protected = {w["family_id"] for w in load_winners(store, round_id) if int(w.get("protected") or 0)}
-    ext = load_external_evidence(external_evidence_path)
-    ranked_pool = [
-        dict(x) for x in items
-        if x.get("classification") in {"PPL_FIXED_REPAIRABLE", "PPL_THEME_REPAIRABLE", "PPL_FIXED_AND_THEME_REPAIRABLE"}
-        and x.get("repair_priority") in {"HIGH", "MEDIUM"}
-    ]
-    ranked_pool = _ppc_controlled_ranked_pool(store, config, run_id, ranked_pool)
-    # C5: research-value prioritization is pure policy logic. The engine still
-    # owns concrete plan materialization, preview, no-repost and remote safety.
-    ranked = [dict(x) for x in rank_repair_candidates(ranked_pool, policy)]
-    plans = store.load_repair_plans(run_id)
-    by_parent: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for p in plans:
-        if is_retired_auto_repair_plan(p):
-            continue
-        by_parent[str(p.get("parent_candidate_id"))].append(p)
-    candidates = {x["candidate_id"]: x for x in store.load_candidates(run_id)}
 
-    # Direction repair is independent from the PPL fixed-repairable classifier:
-    # the parent intentionally fails positive Sharpe. Use immutable Simulation
-    # facts + an existing REVERSE_DIRECTION plan, and require turnover to be
-    # legal before spending REPAIR budget.
-    reverse_plans = [
-        p for p in plans
-        if str(p.get("repair_type") or "").upper() == "REVERSE_DIRECTION"
-        and str(p.get("plan_status") or "") in EXECUTABLE_REPAIR_STATUSES
-        and int(p.get("consumed_posts") or 0) == 0
-    ]
-    reverse_keys = [str((candidates.get(str(p.get("parent_candidate_id"))) or {}).get("sim_key") or "") for p in reverse_plans]
-    reverse_facts = _alpha_facts(alpha_db, [x for x in reverse_keys if x])
-    direction_ranked: List[Dict[str, Any]] = []
-    for p in reverse_plans:
-        cid = str(p.get("parent_candidate_id") or "")
-        parent = candidates.get(cid)
-        if not parent or not parent.get("sim_key"):
-            continue
-        fact = reverse_facts.get(str(parent.get("sim_key"))) or {}
-        dv = _direction_repair_value(fact, policy)
-        if int(dv.get("score") or 0) <= 0:
-            continue
-        direction_ranked.append({
-            "candidate_id": cid, "plan": p, "sharpe": dv.get("sharpe"),
-            "turnover": dv.get("turnover"), "round_direction_band": dv.get("band"),
-            "round_direction_score": int(dv.get("score") or 0),
-        })
-    direction_ranked = [dict(x) for x in rank_direction_repair_candidates(direction_ranked)]
-
-    selected: List[str] = []
-    selected_projected = 0
-    used_families = set()
-    direction_decisions: Dict[str, Dict[str, Any]] = {}
-    for item in direction_ranked:
-        cid = str(item["candidate_id"]); parent = candidates.get(cid)
-        if not parent:
-            continue
-        fid = family_id(parent); signal = str(parent.get("signal_family") or "")
-        plan = item["plan"]; pid = str(plan.get("repair_plan_id") or "")
-        reason = None
-        if fid in protected:
-            reason = "FAMILY_ALREADY_PROTECTED"
-        elif signal in used_families:
-            reason = "ANOTHER_PARENT_FROM_FAMILY_SELECTED"
-        elif attempts.get(signal, 0) >= 1:
-            reason = "DIRECTION_REPAIR_ALREADY_ATTEMPTED_FOR_FAMILY"
-        else:
-            try:
-                prev = preview_production_repair(store, config, alpha_db, run_id, [pid], machine)
-            except (ConfigError, ValueError) as exc:
-                reason = f"DIRECTION_REPAIR_PREVIEW_BLOCKED:{type(exc).__name__}"
-                prev = {}
-            if reason is None and not prev.get("items"):
-                reason = "DIRECTION_REPAIR_PREVIEW_EMPTY"
-            if (
-                reason is None and skip_uncertain
-                and any(str(x.get("required_action") or "") == "HOLD_UNCERTAIN" for x in (prev.get("items") or []))
-            ):
-                reason = "UNCERTAIN_SUBMISSION_LOCAL_QUARANTINE"
-            projected = int(prev.get("projected_new_posts") or 0) if reason is None else 0
-            if reason is None and selected_projected + projected > remaining:
-                reason = "REPAIR_BUDGET_REMAINING_TOO_SMALL"
-            if reason is None:
-                selected.append(pid)
-                selected_projected += projected
-                used_families.add(signal)
-        direction_decisions[cid] = {**item, "selected": pid in selected, "reason": reason or pid}
-        if len(selected) >= int(effective_repair_allocation(policy)["batch_size"]):
-            break
-
-    for item in ranked:
-        cid = str(item["candidate_id"])
-        parent = candidates.get(cid)
-        if not parent:
-            continue
-        fid = family_id(parent); signal = str(parent.get("signal_family") or "")
-        if fid in protected or signal in used_families:
-            continue
-        repair_planning = effective_repair_planning(policy)
-        cap = int(repair_planning["strong_near_pass_repair_cap_per_family"] if item.get("repair_priority") == "HIGH"
-                  else repair_planning["normal_near_pass_repair_cap_per_family"])
-        staged_for_parent = [p for p in by_parent.get(cid, [])
-                             if str(p.get("repair_type") or "") in TURNOVER_STAGED_STRATEGIES]
-        uncertain_retry_plans = [
-            p for p in by_parent.get(cid, [])
-            if str(p.get("blocked_reason") or "") == "UNCERTAIN_RETRY_AUTHORIZED"
-            and str(p.get("plan_status") or "") in EXECUTABLE_REPAIR_STATUSES
-            and int(p.get("consumed_posts") or 0) == 0
-        ]
-        # A retry-authorized plan is the same logical strategy attempt, so the
-        # family cap must not block its one network retry.  It also bypasses a
-        # fresh rescue recommendation: changing strategy here would defeat the
-        # purpose of retrying the exact same expr/settings/sim_key.
-        is_ppc_branch = str(item.get("primary_failure") or "").upper() == PPC_TARGET_FAILURE
-        ppc_attempts_used = int(item.get("_ppc_attempts_used") or 0)
-        ppc_max_attempts = int(item.get("_ppc_max_attempts") or ppc_branch_config(config.rules)["max_attempts"])
-        # PPC uses an evaluated branch-local cap; legacy per-family caps remain
-        # unchanged for every other repair type.
-        cap_reached = (ppc_attempts_used >= ppc_max_attempts) if is_ppc_branch else (attempts.get(signal, 0) >= cap)
-        if cap_reached and not staged_for_parent and not uncertain_retry_plans:
-            continue
-        if not staged_for_parent and not uncertain_retry_plans:
-            rescue = preview_rescue(store, config, alpha_db, run_id, cid, ext)
-            if not rescue.get("allowed_to_execute"):
-                continue
-
-            # Keep the selector compatible with both the current preview_rescue
-            # contract ("recommended_strategy") and a future canonical
-            # "recommendation" mapping. The old code read only "recommendation",
-            # which silently dropped every executable rescue recommendation.
-            recommendation = rescue.get("recommendation")
-            if not isinstance(recommendation, Mapping):
-                legacy_recommendation = rescue.get("recommended_strategy")
-                if isinstance(legacy_recommendation, Mapping):
-                    recommendation = dict(legacy_recommendation)
-                elif isinstance(legacy_recommendation, str) and legacy_recommendation:
-                    recommendation = {
-                        "strategy": legacy_recommendation,
-                        "change": rescue.get("recommended_change") or {},
-                    }
-                else:
-                    recommendation = {}
-
-            if recommendation.get("strategy") == "NEUTRALIZATION_MICRO_TUNE":
-                target = (recommendation.get("change") or {}).get("neutralization")
-                rescue_failure = str(
-                    rescue.get("target_failure")
-                    or item.get("primary_failure")
-                    or ""
-                )
-                if target and rescue_failure != "HT_RETURNS_RATIO_FAIL":
-                    _ensure_neutralization_plan(
-                        store,
-                        config,
-                        run_id,
-                        cid,
-                        rescue_failure,
-                        str(target),
-                    )
-                    plans = store.load_repair_plans(run_id)
-                    by_parent[cid] = [
-                        p for p in plans
-                        if str(p.get("parent_candidate_id")) == cid
-                        and not is_retired_auto_repair_plan(p)
-                    ]
-            elif recommendation.get("strategy") == "SAME_FAMILY_MICRO_TUNE":
-                rescue_failure = str(
-                    rescue.get("target_failure")
-                    or item.get("primary_failure")
-                    or ""
-                )
-                if rescue_failure == "PP_CORRELATION_FAIL":
-                    _ensure_same_family_micro_tune_plan(
-                        store, config, run_id, cid, rescue_failure
-                    )
-                    plans = store.load_repair_plans(run_id)
-                    by_parent[cid] = [
-                        p for p in plans
-                        if str(p.get("parent_candidate_id")) == cid
-                        and not is_retired_auto_repair_plan(p)
-                    ]
-        candidates_plans = [p for p in by_parent.get(cid, [])
-                            if str(p.get("plan_status")) in EXECUTABLE_REPAIR_STATUSES
-                            and int(p.get("consumed_posts") or 0) == 0
-                            and not is_retired_auto_repair_plan(p)
-                            and not (
-                                skip_uncertain
-                                and str(p.get("blocked_reason") or "") == "UNCERTAIN_SUBMISSION_HOLD"
-                            )]
-        # Low-destruction/settings first, then cache/resume preview, then other plans.
-        type_rank = {"NEUTRALIZATION_MICRO_TUNE": 0, "SAME_FAMILY_MICRO_TUNE": 1,
-                     "TURNOVER_DECAY_STEP_1": 2, "TURNOVER_DECAY_STEP_2": 2,
-                     "TURNOVER_HUMP": 2}
-        candidates_plans.sort(key=lambda p: (type_rank.get(str(p.get("repair_type")), 9), str(p.get("repair_plan_id"))))
-        chosen = None
-        best_preview = None
-        for p in candidates_plans:
-            try:
-                prev = preview_production_repair(
-                    store, config, alpha_db, run_id, [p["repair_plan_id"]], machine
-                )
-            except (ConfigError, ValueError) as exc:
-                audit_event(
-                    action="REPAIR_PREVIEW_BLOCKED",
-                    run_id=run_id,
-                    round_id=round_id,
-                    candidate_id=cid,
-                    repair_plan_id=str(p.get("repair_plan_id") or ""),
-                    repair_strategy=str(p.get("repair_type") or ""),
-                    reason=f"{type(exc).__name__}: {exc}",
-                )
-                continue
-            if not prev.get("items"):
-                continue
-            action = prev["items"][0].get("required_action")
-            if skip_uncertain and str(action or "") == "HOLD_UNCERTAIN":
-                audit_event(
-                    action="REPAIR_UNCERTAIN_QUARANTINED",
-                    run_id=run_id, round_id=round_id, candidate_id=cid,
-                    repair_plan_id=str(p.get("repair_plan_id") or ""),
-                    repair_strategy=str(p.get("repair_type") or ""),
-                    reason="UNCERTAIN_SUBMISSION_HOLD", simulation_posts=0, global_hold=False,
-                )
-                continue
-            action_rank = {"CACHE_COMPLETE": 0, "RESUME_EXISTING": 1, "CACHE_RESTORE": 0,
-                           "NEW_SIMULATION_REQUIRED": 2, "RETRY_PER_V21_POLICY": 3}.get(str(action), 4)
-            rank = (action_rank, type_rank.get(str(p.get("repair_type")), 9))
-            if best_preview is None or rank < best_preview[0]:
-                best_preview = (rank, prev)
-                chosen = p
-        if not chosen:
-            continue
-        projected = int((best_preview[1] if best_preview else {}).get("projected_new_posts") or 0)
-        if selected_projected + projected > remaining:
-            continue
-        selected.append(str(chosen["repair_plan_id"]))
-        selected_projected += projected
-        used_families.add(signal)
-        if len(selected) >= int(effective_repair_allocation(policy)["batch_size"]):
-            break
+    evaluation = _evaluate_repair_eligibility_core(
+        store, config, alpha_db, machine, run_id, round_id, policy, remaining,
+        external_evidence_path, skip_uncertain=skip_uncertain,
+        extra_plan_rows=(), emit_audit=True,
+    )
+    # Preserve the historical Actual selector behavior: rescue recommendations
+    # are materialized durably before the selected plan IDs leave this function.
+    _materialize_selector_virtual_plans(
+        store, config, run_id, evaluation.get("materialization_rows") or [],
+    )
+    selected = [str(x) for x in (evaluation.get("selected") or [])]
+    selected_projected = int(evaluation.get("selected_projected") or 0)
+    ranked = [dict(x) for x in (evaluation.get("ranked") or [])]
+    direction_ranked = [dict(x) for x in (evaluation.get("direction_ranked") or [])]
+    direction_decisions = dict(evaluation.get("direction_decisions") or {})
+    candidates = {str(k): dict(v) for k, v in (evaluation.get("candidates") or {}).items()}
+    attempts = dict(evaluation.get("attempts") or {})
+    protected = set(evaluation.get("protected") or set())
     if batch_no is not None:
         active_repair_policy_hash = repair_policy_hash(policy)
         selected_plans = {str(p.get("repair_plan_id")): p for p in store.load_repair_plans(run_id)
@@ -6923,92 +7106,41 @@ def _search_availability_read_only(store: Any, alpha_db: Path, run_id: str, roun
         )
 
 
-def _repair_availability_read_only(store: Any, config: Any, alpha_db: Path, machine: Any,
-                                   run_id: str, round_id: str,
-                                   slots_free: int) -> ResearchAvailabilityFacts:
-    """Fail-closed Repair availability evidence.
-
-    OPEN-1 established that the historical implementation only evaluated the
-    existing RepairPlan subset with an individual read-only Production Repair
-    preview. That number is a broad proxy and is NOT equivalent to the Actual
-    ``_select_repair_batch()`` result.
-
-    Until the shared pure Repair Eligibility Core exists, preserve useful proxy
-    telemetry in raw/selector/preview_safe fields but fail closed:
-    ``evaluation_complete=False`` and ``execution_eligible_count=0``.
-
-    No HTTP, no RepairPlan materialization, no workflow transition, no POST.
-    """
+def _repair_availability_read_only(
+    store: Any, config: Any, alpha_db: Path, machine: Any, run_id: str,
+    round_id: str, policy: Mapping[str, Any], slots_free: int, *,
+    external_evidence_path: Optional[Path] = None,
+) -> ResearchAvailabilityFacts:
+    """Selector-parity Repair availability using the shared read-only core."""
     try:
-        plans = [dict(row) for row in store.load_repair_plans(run_id)]
-        raw_rows = [
-            row for row in plans
+        rr = get_round(store, round_id=round_id) or {}
+        remaining = int(phase_capacity(policy, rr, "REPAIR").capacity) if rr else 0
+        preparation = _read_only_repair_preparation(store, config, alpha_db, run_id, round_id)
+        evidence_path = Path(external_evidence_path) if external_evidence_path is not None else Path(config.project_dir) / "rescue_evidence.json"
+        evaluation = _evaluate_repair_eligibility_core(
+            store, config, alpha_db, machine, run_id, round_id, policy, remaining,
+            evidence_path, skip_uncertain=True,
+            extra_plan_rows=preparation.get("virtual_plan_rows") or (), emit_audit=False,
+        )
+        durable_raw = [
+            dict(row) for row in store.load_repair_plans(run_id)
             if str(row.get("plan_status") or "").upper() in EXECUTABLE_REPAIR_STATUSES
             and not str(row.get("blocked_reason") or "").strip()
         ]
-        candidates = {str(row.get("candidate_id")): dict(row) for row in store.load_candidates(run_id)}
-        classified = {
-            str(row.get("candidate_id")): dict(row)
-            for row in classify_run(store, config, alpha_db, run_id, emit_audit=False)
-        }
-        protected = {w["family_id"] for w in load_winners(store, round_id) if int(w.get("protected") or 0)}
-        selector_rows: List[Dict[str, Any]] = []
-        for plan in raw_rows:
-            if int(plan.get("consumed_posts") or 0) > 0 or is_retired_auto_repair_plan(plan):
-                continue
-            parent = candidates.get(str(plan.get("parent_candidate_id") or ""))
-            if not parent or family_id(parent) in protected:
-                continue
-            cls = classified.get(str(parent.get("candidate_id") or "")) or {}
-            direction = str(plan.get("repair_type") or "").upper() == "REVERSE_DIRECTION"
-            if not direction and not (
-                cls.get("classification") in {
-                    "PPL_FIXED_REPAIRABLE", "PPL_THEME_REPAIRABLE", "PPL_FIXED_AND_THEME_REPAIRABLE",
-                }
-                and cls.get("repair_priority") in {"HIGH", "MEDIUM"}
-            ):
-                continue
-            selector_rows.append(plan)
-
-        safe_rows: List[Dict[str, Any]] = []
-        preview_errors = 0
-        for plan in selector_rows:
-            try:
-                preview = preview_production_repair_read_only(
-                    store, config, alpha_db, run_id, [str(plan["repair_plan_id"])], machine,
-                )
-            except (ConfigError, ValueError, KeyError, TypeError):
-                preview_errors += 1
-                continue
-            items = list(preview.get("items") or [])
-            if (
-                items
-                and str(items[0].get("required_action") or "") != "HOLD_UNCERTAIN"
-                and bool(items[0].get("allowed_to_execute"))
-            ):
-                safe_rows.append(plan)
-
-        proxy_families = {
-            str(
-                (candidates.get(str(plan.get("parent_candidate_id") or "")) or {}).get("signal_family")
-                or family_id(candidates.get(str(plan.get("parent_candidate_id") or "")) or {})
-            )
-            for plan in safe_rows
-        }
-        proxy_families.discard("")
-        proxy_count = len(proxy_families)
-        suffix = f":PROXY_FAMILIES={proxy_count}"
-        if preview_errors:
-            suffix += f":PREVIEW_ERRORS={preview_errors}"
-
+        raw_count = len(durable_raw) + len(preparation.get("virtual_plan_rows") or [])
+        selector_count = len(evaluation.get("ranked") or []) + len(evaluation.get("direction_ranked") or [])
+        preview_safe_count = len(set(str(x) for x in (evaluation.get("preview_safe_plan_ids") or []) if str(x)))
+        executable_count = len(set(str(x) for x in (evaluation.get("eligible_plan_ids") or []) if str(x)))
+        complete = bool(preparation.get("evaluation_complete", True)) and bool(evaluation.get("evaluation_complete", True))
+        if not complete:
+            reasons = [str(x.get("reason") or x) for x in (preparation.get("incomplete_reasons") or [])]
+            reason = "REPAIR_SELECTOR_PARITY_INCOMPLETE" + ((":" + ",".join(reasons)) if reasons else "")
+        else:
+            reason = "AVAILABLE" if executable_count else "NO_EXECUTABLE_REPAIR_EVIDENCE"
         return _availability_with_slots(
-            raw=len(raw_rows),
-            selector=len(selector_rows),
-            safe=len(safe_rows),
-            executable=0,
-            slots_free=slots_free,
-            complete=False,
-            reason="REPAIR_SELECTOR_PARITY_PENDING:INDIVIDUAL_PLAN_PREVIEW_PROXY_ONLY" + suffix,
+            raw=raw_count, selector=selector_count, safe=preview_safe_count,
+            executable=executable_count, slots_free=slots_free,
+            complete=complete, reason=reason,
         )
     except Exception as exc:
         return _availability_with_slots(
@@ -7098,7 +7230,7 @@ def _scheduler_shadow_observation(
         store, availability_alpha_db, run_id, round_id, policy, int(slots.free_slots),
     )
     repair_availability = _repair_availability_read_only(
-        store, config, availability_alpha_db, machine, run_id, round_id, int(slots.free_slots),
+        store, config, availability_alpha_db, machine, run_id, round_id, policy, int(slots.free_slots),
     )
     search_backlog = max(int(search_availability.raw_backlog_count), int(selected_count) if actual_action is SchedulerActionType.SEARCH else 0)
     repair_backlog = max(int(repair_availability.raw_backlog_count), int(selected_count) if actual_action is SchedulerActionType.REPAIR else 0)

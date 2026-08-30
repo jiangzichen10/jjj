@@ -76,8 +76,8 @@ def test_d2_policy_identity_keeps_scheduler_and_evidence_versions_separate():
     sched = policy_from_mapping(policy["scheduler_shadow"])
     evidence = evidence_policy_from_mapping(policy["scheduler_evidence"])
     assert policy["scheduler_evidence"]["mode"] == EVIDENCE_ONLY_MODE
-    assert sched.policy_version == "V31_SCHED_SHADOW_004"
-    assert evidence.policy_version == "V31_SCHED_EVIDENCE_003"
+    assert sched.policy_version == "V31_SCHED_SHADOW_005"
+    assert evidence.policy_version == "V31_SCHED_EVIDENCE_004"
     assert shadow_policy_hash(sched)
     # Evidence policy identity is not overloaded into Scheduler identity.
     assert evidence.policy_version != sched.policy_version
@@ -206,8 +206,8 @@ def test_d2_evaluation_ledger_records_required_frozen_facts_and_never_authoritat
     row = rows[0]
     assert row["decision_key"] == rec["decision_key"]
     assert row["actual_action"] == "SEARCH"
-    assert row["scheduler_policy_version"] == "V31_SCHED_SHADOW_004"
-    assert row["evidence_policy_version"] == "V31_SCHED_EVIDENCE_003"
+    assert row["scheduler_policy_version"] == "V31_SCHED_SHADOW_005"
+    assert row["evidence_policy_version"] == "V31_SCHED_EVIDENCE_004"
     assert row["scheduler_policy_hash"] == shadow_policy_hash(sched)
     assert row["search_backlog"] == 9 and row["repair_backlog"] == 3
     assert row["remote_slots_free"] == 3

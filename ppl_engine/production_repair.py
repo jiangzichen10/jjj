@@ -442,27 +442,34 @@ def _group_repair_execution_units(classified: Sequence[Mapping[str, Any]]) -> Li
     return units
 
 
-def _prepare_repair_execution(
+def _prepare_repair_plan_rows(
     store: Any, config: Any, alpha_db: Path, run_id: str,
-    plan_ids: Iterable[str], machine_lib: Any, *, fail_on_uncertain: bool = True,
-    allow_continuous_profile: bool = False, enforce_global_repair_budget: bool = True,
+    plans: Sequence[Mapping[str, Any]], machine_lib: Any, *,
+    fail_on_uncertain: bool = True, allow_continuous_profile: bool = False,
+    enforce_global_repair_budget: bool = True, emit_budget_audit: bool = True,
 ) -> Dict[str, Any]:
-    """Pure durable-state/cache preflight; it does not mutate workflow state."""
+    """Pure plan-row/cache preflight shared by durable and virtual Repair plans.
+
+    ``plans`` may contain durable rows or deterministic virtual rows produced by
+    the Scheduler Repair eligibility preview.  No workflow/plan/candidate state
+    is mutated.  Budget audit emission is optional so SHADOW_ONLY callers remain
+    strictly side-effect free.
+    """
     ctx = validate_production_repair_context(
         store, config, run_id, allow_continuous_profile=allow_continuous_profile,
     )
-    ids = list(dict.fromkeys(str(x) for x in plan_ids))
-    if not ids:
+    material = [dict(p) for p in plans]
+    ids = [str(p.get("repair_plan_id") or "") for p in material]
+    if not material or any(not pid for pid in ids):
         raise ConfigError("PRODUCTION_REPAIR_REQUIRES_EXPLICIT_PLAN_ID: no plan selected")
+    if len(set(ids)) != len(ids):
+        raise ConfigError("PRODUCTION_REPAIR_DUPLICATE_PLAN_ID")
     if not initial_search_completed(store, run_id):
         raise ConfigError("INITIAL_SEARCH_NOT_COMPLETE")
     registry = _operator_registry(store)
-    plans_by_id = {str(p["repair_plan_id"]): p for p in store.load_repair_plans(run_id)}
     classified: List[Dict[str, Any]] = []
-    for plan_id in ids:
-        plan = plans_by_id.get(plan_id)
-        if plan is None:
-            raise ConfigError(f"REPAIR_PLAN_NOT_FOUND: {plan_id}")
+    for plan in material:
+        plan_id = str(plan.get("repair_plan_id") or "")
         if plan.get("run_id") != run_id:
             raise ConfigError(f"REPAIR_PLAN_RUN_MISMATCH: {plan_id}")
         if plan.get("plan_status") not in EXECUTABLE_STATUSES:
@@ -485,21 +492,18 @@ def _prepare_repair_execution(
     remaining = max(0, reserve - consumed) if enforce_global_repair_budget else None
     if enforce_global_repair_budget and projected > int(remaining or 0):
         blocked_payload = {
-            "repair_reserve": reserve,
-            "repair_consumed": consumed,
-            "repair_reserve_remaining": remaining,
-            "projected_new_posts": projected,
+            "repair_reserve": reserve, "repair_consumed": consumed,
+            "repair_reserve_remaining": remaining, "projected_new_posts": projected,
             "unique_execution_unit_count": len(units),
             "sim_keys": [str(unit["sim_key"]) for unit in units if unit["will_post"]],
         }
-        _audit(store, run_id, "BUDGET_BLOCKED", blocked_payload)
-        audit_event(action="BUDGET_BLOCKED", run_id=run_id, **blocked_payload)
+        if emit_budget_audit:
+            _audit(store, run_id, "BUDGET_BLOCKED", blocked_payload)
+            audit_event(action="BUDGET_BLOCKED", run_id=run_id, **blocked_payload)
         raise ConfigError("PRODUCTION_REPAIR_BUDGET_EXCEEDED")
     fingerprint_material = [
-        {
-            "sim_key": u["sim_key"], "plan_ids": u["plan_ids"],
-            "action": u["action"], "will_post": u["will_post"],
-        }
+        {"sim_key": u["sim_key"], "plan_ids": u["plan_ids"],
+         "action": u["action"], "will_post": u["will_post"]}
         for u in units
     ]
     fingerprint = hashlib.sha256(_json(fingerprint_material).encode()).hexdigest()
@@ -509,6 +513,29 @@ def _prepare_repair_execution(
         "global_repair_budget_enforced": bool(enforce_global_repair_budget),
         "projected_new_posts": projected, "fingerprint": fingerprint,
     }
+
+
+def _prepare_repair_execution(
+    store: Any, config: Any, alpha_db: Path, run_id: str,
+    plan_ids: Iterable[str], machine_lib: Any, *, fail_on_uncertain: bool = True,
+    allow_continuous_profile: bool = False, enforce_global_repair_budget: bool = True,
+) -> Dict[str, Any]:
+    """Pure durable-state/cache preflight; it does not mutate workflow state."""
+    ids = list(dict.fromkeys(str(x) for x in plan_ids))
+    plans_by_id = {str(p["repair_plan_id"]): p for p in store.load_repair_plans(run_id)}
+    plans: List[Mapping[str, Any]] = []
+    for plan_id in ids:
+        plan = plans_by_id.get(plan_id)
+        if plan is None:
+            raise ConfigError(f"REPAIR_PLAN_NOT_FOUND: {plan_id}")
+        plans.append(plan)
+    return _prepare_repair_plan_rows(
+        store, config, alpha_db, run_id, plans, machine_lib,
+        fail_on_uncertain=fail_on_uncertain,
+        allow_continuous_profile=allow_continuous_profile,
+        enforce_global_repair_budget=enforce_global_repair_budget,
+        emit_budget_audit=True,
+    )
 
 
 def _preview_from_preflight(run_id: str, prepared: Mapping[str, Any]) -> Dict[str, Any]:
@@ -578,6 +605,31 @@ def preview_production_repair_read_only(
         enforce_global_repair_budget=False,
     )
     return _preview_from_preflight(run_id, prepared)
+
+
+def preview_production_repair_plan_rows_read_only(
+    store: Any, config: Any, alpha_db: Path, run_id: str,
+    plans: Sequence[Mapping[str, Any]], machine_lib: Any, *, emit_audit: bool = False,
+    enforce_global_repair_budget: bool = False,
+) -> Dict[str, Any]:
+    """Preview durable or virtual Repair plan rows with identical execution semantics.
+
+    The default is strictly observational: no audit row, no HTTP, no POST, no
+    plan/candidate/workflow mutation.  ``emit_audit=True`` is reserved for the
+    authoritative compatibility selector so historical preview telemetry can be
+    retained without duplicating eligibility logic.
+    """
+    continuous_profile = str(config.plan.get("run_profile") or "").upper() == "CONTINUOUS_RESEARCH"
+    prepared = _prepare_repair_plan_rows(
+        store, config, alpha_db, run_id, plans, machine_lib,
+        fail_on_uncertain=False, allow_continuous_profile=continuous_profile,
+        enforce_global_repair_budget=bool(enforce_global_repair_budget),
+        emit_budget_audit=bool(emit_audit and enforce_global_repair_budget),
+    )
+    out = _preview_from_preflight(run_id, prepared)
+    if emit_audit:
+        _audit(store, run_id, "PRODUCTION_REPAIR_PREVIEW", out)
+    return out
 
 
 def _persist_child(store: Any, run_id: str, plan: Mapping[str, Any], child: Mapping[str, Any]) -> None:

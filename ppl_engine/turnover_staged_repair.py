@@ -238,6 +238,167 @@ def _persist_next_plan(store: Any, config: Any, run_id: str, round_id: str,
     return plan_id
 
 
+def preview_turnover_staged_plans(
+    store: Any, config: Any, alpha_db: Path, run_id: str, round_id: str,
+) -> Dict[str, Any]:
+    """Read-only preview of the plans ``sync_turnover_staged_plans`` would create.
+
+    No durable rows, audit events, HTTP requests, or Check refreshes are made.
+    When the authoritative path would require a GET-only Check refresh before
+    deciding whether the next stage exists, the preview returns
+    ``evaluation_complete=False`` instead of guessing.
+    """
+    candidates = {str(c["candidate_id"]): c for c in store.load_candidates(run_id)}
+    durable_plans = [dict(p) for p in store.load_repair_plans(run_id)]
+    existing_signatures = {str(p.get("repair_signature") or "") for p in durable_plans}
+    virtual: list = []
+    incomplete: list = []
+    exhausted: list = []
+
+    # Stage-1 bootstrap parity.
+    existing_families = set()
+    for plan in durable_plans:
+        ctx = _stage_context(plan)
+        if ctx.get("policy") == TURNOVER_STAGED_POLICY and ctx.get("origin_signal_family"):
+            existing_families.add(str(ctx["origin_signal_family"]))
+    with store.connect() as conn:
+        diagnoses = [dict(r) for r in conn.execute(
+            """SELECT * FROM ppl_diagnoses WHERE run_id=?
+               AND primary_failure='TURNOVER_ABOVE_BASE_MAX'
+               AND source_phase='SIMULATION' AND evidence_source='LIVE_SIMULATION'
+               ORDER BY created_at DESC, diagnosis_id DESC""", (run_id,)
+        )]
+        registry = {str(r[0]): str(r[1]) for r in conn.execute(
+            "SELECT operator_name,status FROM ppl_operator_capabilities"
+        )}
+        edges = {str(r["repair_signature"]): dict(r) for r in conn.execute(
+            "SELECT * FROM ppl_repairs WHERE run_id=?", (run_id,)
+        )}
+
+    by_family: Dict[str, list] = {}
+    for diagnosis in diagnoses:
+        parent = candidates.get(str(diagnosis.get("candidate_id") or ""))
+        if not parent:
+            continue
+        family = str(parent.get("signal_family") or "")
+        if not family or family in existing_families:
+            continue
+        path_raw = parent.get("repair_path_json") or parent.get("repair_path") or "[]"
+        try:
+            path = json.loads(path_raw) if isinstance(path_raw, str) else list(path_raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            path = []
+        if any(any(stage in str(part) for stage in TURNOVER_STAGED_STRATEGIES) for part in path):
+            continue
+        metrics = json.loads(diagnosis.get("metrics_snapshot_json") or "{}")
+        sharpe = float(metrics.get("sharpe")) if metrics.get("sharpe") is not None else -999.0
+        by_family.setdefault(family, []).append((sharpe, str(parent["candidate_id"]), diagnosis, parent, path))
+    for family in sorted(by_family):
+        _, _, diagnosis, parent, path = sorted(by_family[family], key=lambda x: (-x[0], x[1]))[0]
+        spec = turnover_stage_spec(parent, 1)
+        spec["turnover_staged_context"]["round_id"] = round_id
+        spec["repair_path"] = path + [f"TURNOVER_ABOVE_BASE_MAX:{TURNOVER_DECAY_STEP_1}"]
+        signature = str(spec["repair_signature"])
+        if signature in existing_signatures:
+            continue
+        plan_id = "rplan_" + hashlib.sha256(f"{run_id}|{signature}".encode()).hexdigest()[:24]
+        virtual.append({
+            "repair_plan_id": plan_id, "diagnosis_id": diagnosis["diagnosis_id"], "run_id": run_id,
+            "parent_candidate_id": parent["candidate_id"],
+            "root_candidate_id": parent.get("root_candidate_id") or parent["candidate_id"],
+            "target_failure": "TURNOVER_ABOVE_BASE_MAX", "repair_type": TURNOVER_DECAY_STEP_1,
+            "repair_signature": signature, "repair_path_json": _json(spec["repair_path"]),
+            "repair_depth": int(parent.get("repair_depth") or 0) + 1,
+            "candidate_spec_json": _json(spec), "operator_requirements_json": "[]",
+            "plan_status": "READY", "projected_new_posts": 1,
+            "committed_posts": 0, "consumed_posts": 0, "blocked_reason": None,
+            "_virtual_source": "TURNOVER_STAGE1_PREVIEW",
+        })
+        existing_signatures.add(signature)
+
+    staged_plans = [p for p in durable_plans if str(p.get("repair_type") or "") in TURNOVER_STAGED_STRATEGIES]
+    by_origin: Dict[tuple, list] = {}
+    for plan in staged_plans:
+        ctx = _stage_context(plan)
+        if ctx.get("policy") != TURNOVER_STAGED_POLICY:
+            continue
+        key = (str(ctx.get("origin_candidate_id") or ""), str(ctx.get("origin_signal_family") or ""))
+        if all(key):
+            by_origin.setdefault(key, []).append((int(ctx.get("stage") or 0), plan, ctx))
+
+    for (origin_id, origin_family), chain in sorted(by_origin.items()):
+        stage, plan, ctx = max(chain, key=lambda item: item[0])
+        if stage not in {1, 2, 3} or str(plan.get("plan_status")) != "EXECUTED":
+            continue
+        edge = edges.get(str(plan.get("repair_signature") or ""))
+        child = candidates.get(str((edge or {}).get("child_candidate_id") or ""))
+        if not child or not _candidate_complete(child, alpha_db):
+            continue
+        evidence = latest_turnover_check_state(store, run_id, child["candidate_id"])
+        if evidence["state"] == "INSUFFICIENT" and evidence.get("refresh_allowed"):
+            incomplete.append({
+                "origin_candidate_id": origin_id, "origin_signal_family": origin_family,
+                "candidate_id": child["candidate_id"], "reason": "TURNOVER_CHECK_REFRESH_REQUIRED",
+            })
+            continue
+        if evidence["state"] != "BLOCKED":
+            continue
+        if stage == 3:
+            exhausted.append({
+                "origin_candidate_id": origin_id, "origin_signal_family": origin_family,
+                "policy": TURNOVER_STAGED_POLICY, "run_id": run_id, "round_id": round_id,
+            })
+            continue
+        next_stage = stage + 1
+        if any(s == next_stage for s, _, _ in chain):
+            continue
+        spec = turnover_stage_spec(
+            child, next_stage, origin_candidate_id=str(ctx["origin_candidate_id"]),
+            origin_signal_family=str(ctx["origin_signal_family"]), base_decay=int(ctx["base_decay"]),
+            previous_stage_candidate_id=str(child["candidate_id"]),
+        )
+        spec["turnover_staged_context"]["round_id"] = round_id
+        spec["repair_path"] = json.loads(plan.get("repair_path_json") or "[]") + [
+            f"TURNOVER_ABOVE_BASE_MAX:{spec['repair_type']}"
+        ]
+        gate = operator_gate(spec.get("operator_requirements") or (), registry)
+        if gate["status"] != "READY":
+            continue
+        if next_stage == 3 and validate_turnover_hump_structure(spec, child, config.rules, registry)["status"] != "READY":
+            continue
+        signature = repair_signature(
+            child, spec["repair_type"], "TURNOVER_ABOVE_BASE_MAX",
+            {"stage": next_stage, "policy": TURNOVER_STAGED_POLICY, "origin": ctx["origin_candidate_id"]},
+            spec.get("settings_override") or {},
+        )
+        spec["repair_signature"] = signature
+        if signature in existing_signatures:
+            continue
+        plan_id = "rplan_" + hashlib.sha256(f"{run_id}|{signature}".encode()).hexdigest()[:24]
+        diagnosis_id = "diag_" + hashlib.sha256(
+            f"{run_id}|{child['candidate_id']}|{TURNOVER_STAGED_POLICY}|{next_stage}".encode()
+        ).hexdigest()[:24]
+        virtual.append({
+            "repair_plan_id": plan_id, "diagnosis_id": diagnosis_id, "run_id": run_id,
+            "parent_candidate_id": child["candidate_id"], "root_candidate_id": ctx["origin_candidate_id"],
+            "target_failure": "TURNOVER_ABOVE_BASE_MAX", "repair_type": spec["repair_type"],
+            "repair_signature": signature, "repair_path_json": _json(spec["repair_path"]),
+            "repair_depth": int(plan.get("repair_depth") or 0) + 1,
+            "candidate_spec_json": _json(spec),
+            "operator_requirements_json": _json(spec.get("operator_requirements") or []),
+            "plan_status": "PLANNED", "projected_new_posts": 1,
+            "committed_posts": 0, "consumed_posts": 0, "blocked_reason": None,
+            "_virtual_source": f"TURNOVER_STAGE{next_stage}_PREVIEW",
+        })
+        existing_signatures.add(signature)
+
+    return {
+        "virtual_plan_rows": virtual, "evaluation_complete": not incomplete,
+        "incomplete_reasons": incomplete, "exhausted": exhausted,
+        "network_requests": 0, "check_requests": 0, "writes": 0,
+    }
+
+
 def sync_turnover_staged_plans(
     store: Any, config: Any, alpha_db: Path, run_id: str, round_id: str, *,
     refresh_check: Optional[Callable[[str], Mapping[str, Any]]] = None,

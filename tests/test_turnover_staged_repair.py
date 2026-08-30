@@ -14,7 +14,7 @@ from ppl_engine.repair_engine import (
     plan_repairs, turnover_stage_spec,
 )
 from ppl_engine.store import RunnerStore
-from ppl_engine.turnover_staged_repair import sync_turnover_staged_plans
+from ppl_engine.turnover_staged_repair import preview_turnover_staged_plans, sync_turnover_staged_plans
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = "2026-08-23T00:00:00+00:00"
@@ -242,3 +242,28 @@ def test_stage2_unlocks_one_hump_and_stage3_exhaustion_is_scoped(tmp_path):
         "origin_signal_family": "ds/f1/IDENTITY/NORMAL/RANK",
         "policy": "TURNOVER_STAGED_POLICY_V1", "run_id": "run_x", "round_id": "round_x",
     }]
+
+
+def test_read_only_turnover_preview_matches_stage2_materialization_without_writes(tmp_path):
+    store, conf, adb = _store_with_executed_stage1(tmp_path)
+    _resolved_turnover_check(store, "stage1", outcome="FAIL")
+    before = len(store.load_repair_plans("run_x"))
+    preview = preview_turnover_staged_plans(store, conf, adb, "run_x", "round_x")
+    assert preview["evaluation_complete"] is True
+    assert preview["writes"] == 0 and preview["network_requests"] == 0
+    assert len(store.load_repair_plans("run_x")) == before
+    virtual = preview["virtual_plan_rows"]
+    assert len(virtual) == 1 and virtual[0]["repair_type"] == "TURNOVER_DECAY_STEP_2"
+    actual = sync_turnover_staged_plans(store, conf, adb, "run_x", "round_x")
+    assert actual["created_plan_ids"] == [virtual[0]["repair_plan_id"]]
+
+
+def test_read_only_turnover_preview_marks_refresh_required_incomplete(tmp_path):
+    store, conf, adb = _store_with_executed_stage1(tmp_path)
+    before = len(store.load_repair_plans("run_x"))
+    preview = preview_turnover_staged_plans(store, conf, adb, "run_x", "round_x")
+    assert preview["evaluation_complete"] is False
+    assert preview["virtual_plan_rows"] == []
+    assert preview["incomplete_reasons"][0]["reason"] == "TURNOVER_CHECK_REFRESH_REQUIRED"
+    assert preview["network_requests"] == 0 and preview["check_requests"] == 0 and preview["writes"] == 0
+    assert len(store.load_repair_plans("run_x")) == before

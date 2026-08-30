@@ -182,7 +182,7 @@ strategy_integration:
 scheduler_shadow:
   enabled: true
   mode: SHADOW_ONLY
-  policy_version: V31_SCHED_SHADOW_004
+  policy_version: V31_SCHED_SHADOW_005
   productivity_windows: [100, 500]
   short_window_weight: 0.65
   long_window_weight: 0.35
@@ -197,7 +197,7 @@ scheduler_shadow:
 scheduler_evidence:
   enabled: true
   mode: EVIDENCE_ONLY
-  evidence_policy_version: V31_SCHED_EVIDENCE_003
+  evidence_policy_version: V31_SCHED_EVIDENCE_004
   replay_repetitions: 5
   activation_thresholds:
     # D2 intentionally does not invent activation sample thresholds.

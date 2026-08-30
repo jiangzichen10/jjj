@@ -20,7 +20,7 @@ from ppl_engine.production_repair import (
     execute_round_repair,
     initial_search_completed,
     list_repair_plans,
-    preview_production_repair,
+    preview_production_repair, preview_production_repair_plan_rows_read_only,
     preflight_round_repair_execution,
     reconcile_completed_repair_outcomes,
     validate_production_repair_context,
@@ -996,3 +996,59 @@ def test_legacy_round_repair_still_enforces_global_repair_reserve(tmp_path, monk
             plan_ids=["rplan_test"], allow_simulation_post=True,
             enforce_global_repair_budget=True,
         )
+
+
+def test_virtual_plan_row_preview_is_side_effect_free_by_default(tmp_path, monkeypatch):
+    store, conf = make_store(tmp_path)
+    adb = tmp_path / "alpha.db"
+    make_alpha_db(adb, [("parent_key", "COMPLETE", None, "A0", 1.5, 1.1, 0.2, 10, 10)])
+    _mock_materialize(monkeypatch, child_sim_key="child_virtual_preview")
+    plan = dict(store.load_repair_plans("run_0002")[0])
+    before_plans = len(store.load_repair_plans("run_0002"))
+    monkeypatch.setattr(
+        "ppl_engine.production_repair._audit",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("audit write forbidden")),
+    )
+    out = preview_production_repair_plan_rows_read_only(
+        store, conf, adb, "run_0002", [plan], real_machine,
+    )
+    assert out["writes"] == 0 and out["network_requests"] == 0 and out["simulation_posts"] == 0
+    assert len(store.load_repair_plans("run_0002")) == before_plans
+
+
+def test_virtual_plan_row_preview_authoritative_mode_preserves_global_budget_gate(tmp_path, monkeypatch):
+    store, conf = make_store(tmp_path)
+    _add_round(store)
+    adb = tmp_path / "alpha.db"
+    make_alpha_db(adb)
+    _mock_materialize(monkeypatch, child_sim_key="child_budget_guard")
+    with store.connect() as con:
+        con.execute("UPDATE ppl_rounds SET repair_consumed=48 WHERE round_id='round_run_0002'")
+    plan = dict(store.load_repair_plans("run_0002")[0])
+    with pytest.raises(ConfigError, match="PRODUCTION_REPAIR_BUDGET_EXCEEDED"):
+        preview_production_repair_plan_rows_read_only(
+            store, conf, adb, "run_0002", [plan], real_machine,
+            emit_audit=True, enforce_global_repair_budget=True,
+        )
+
+
+def test_virtual_plan_row_preview_supports_continuous_round_selector_without_relaxing_operator_preview(tmp_path, monkeypatch):
+    conf = cfg_v31()
+    store, conf = make_store(tmp_path, conf=conf)
+    with store.connect() as con:
+        con.execute("UPDATE ppl_runs SET run_profile='CONTINUOUS_RESEARCH' WHERE run_id='run_0002'")
+    adb = tmp_path / "alpha.db"
+    make_alpha_db(adb)
+    _mock_materialize(monkeypatch, child_sim_key="child_continuous_selector")
+    plan = dict(store.load_repair_plans("run_0002")[0])
+
+    # The shared selector preflight must match Round execution, which explicitly
+    # permits CONTINUOUS_RESEARCH. The operator-facing legacy preview remains
+    # restricted to PRODUCTION_RESEARCH and is not globally relaxed.
+    out = preview_production_repair_plan_rows_read_only(
+        store, conf, adb, "run_0002", [plan], real_machine,
+    )
+    assert out["selected_plan_count"] == 1
+    assert out["simulation_posts"] == 0 and out["network_requests"] == 0
+    with pytest.raises(ConfigError, match="PRODUCTION_REPAIR_REQUIRES_PRODUCTION_RESEARCH_PROFILE"):
+        preview_production_repair(store, conf, adb, "run_0002", ["rplan_test"], real_machine)
