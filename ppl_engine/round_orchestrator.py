@@ -422,6 +422,30 @@ def _round_policy_upgrade_compatible(stored: Mapping[str, Any], current: Mapping
     stored_versions = dict(stored.get("policy_versions") or {})
     current_versions = dict(current.get("policy_versions") or {})
 
+    # OPEN1_EVIDENCE_GUARD_DURABLE_COMPAT
+    # Evidence-only semantic upgrade. Actual PHASE_COMPATIBILITY execution,
+    # Simulation POST identity, sim_key, durable URL, budgets and batch sizing
+    # remain unchanged. Accept ONLY an exact 003/002 -> 004/003 identity bump.
+    stored_shadow_open1 = dict(stored.get("scheduler_shadow") or {})
+    current_shadow_open1 = dict(current.get("scheduler_shadow") or {})
+    stored_evidence_open1 = dict(stored.get("scheduler_evidence") or {})
+    current_evidence_open1 = dict(current.get("scheduler_evidence") or {})
+    if (
+        str(stored_shadow_open1.get("policy_version") or "") == "V31_SCHED_SHADOW_003"
+        and str(current_shadow_open1.get("policy_version") or "") == "V31_SCHED_SHADOW_004"
+        and str(stored_evidence_open1.get("evidence_policy_version") or "") == "V31_SCHED_EVIDENCE_002"
+        and str(current_evidence_open1.get("evidence_policy_version") or "") == "V31_SCHED_EVIDENCE_003"
+    ):
+        legacy_open1 = json.loads(_json(current))
+        legacy_open1_shadow = dict(legacy_open1.get("scheduler_shadow") or {})
+        legacy_open1_evidence = dict(legacy_open1.get("scheduler_evidence") or {})
+        legacy_open1_shadow["policy_version"] = "V31_SCHED_SHADOW_003"
+        legacy_open1_evidence["evidence_policy_version"] = "V31_SCHED_EVIDENCE_002"
+        legacy_open1["scheduler_shadow"] = legacy_open1_shadow
+        legacy_open1["scheduler_evidence"] = legacy_open1_evidence
+        if _json(legacy_open1) == _json(stored):
+            return True
+
     # Controlled fixed-pool/Shadow-evidence HOTFIX.  This is intentionally
     # policy-shaped rather than run-id-shaped.  Reconstruct the prior snapshot
     # and require byte-equivalence after removing only the approved changes.
@@ -438,11 +462,17 @@ def _round_policy_upgrade_compatible(stored: Mapping[str, Any], current: Mapping
     legacy_shadow = dict(legacy_hotfix.get("scheduler_shadow") or {})
     stored_evidence = dict(stored.get("scheduler_evidence") or {})
     legacy_evidence = dict(legacy_hotfix.get("scheduler_evidence") or {})
+    legacy_scheduler_evidence_identity = (
+        str(legacy_shadow.get("policy_version") or ""),
+        str(legacy_evidence.get("evidence_policy_version") or ""),
+    )
     if (
         str(stored_shadow.get("policy_version") or "") == "V31_SCHED_SHADOW_002"
-        and str(legacy_shadow.get("policy_version") or "") == "V31_SCHED_SHADOW_003"
         and str(stored_evidence.get("evidence_policy_version") or "") == "V31_SCHED_EVIDENCE_001"
-        and str(legacy_evidence.get("evidence_policy_version") or "") == "V31_SCHED_EVIDENCE_002"
+        and legacy_scheduler_evidence_identity in {
+            ("V31_SCHED_SHADOW_003", "V31_SCHED_EVIDENCE_002"),
+            ("V31_SCHED_SHADOW_004", "V31_SCHED_EVIDENCE_003"),
+        }
     ):
         legacy_shadow["policy_version"] = stored_shadow["policy_version"]
         legacy_evidence["evidence_policy_version"] = stored_evidence["evidence_policy_version"]
@@ -710,9 +740,28 @@ def _migrate_round_policy_if_allowed(store: Any, round_id: str, run_id: str,
         change = "PLATFORM_DRIVEN_PPL_CLASSIFICATION_ADDITIVE"
     elif "rolling_discovery" not in stored:
         change = "ROLLING_DATASET_DISCOVERY_ADDITIVE"
-    elif ((stored.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_002"
-          and (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_003"):
-        change = "FIXED_SEARCH_POOL_AND_EXECUTABLE_SHADOW_EVIDENCE"
+    elif (
+        (stored.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_003"
+        and (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_004"
+        and (stored.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_002"
+        and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_003"
+    ):
+        change = "OPEN1_FAIL_CLOSED_SHADOW_EVIDENCE_GUARD"
+    elif (
+        (stored.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_002"
+        and (stored.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_001"
+        and (
+            (
+                (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_003"
+                and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_002"
+            )
+            or (
+                (current.get("scheduler_shadow") or {}).get("policy_version") == "V31_SCHED_SHADOW_004"
+                and (current.get("scheduler_evidence") or {}).get("evidence_policy_version") == "V31_SCHED_EVIDENCE_003"
+            )
+        )
+    ):
+        change = "FIXED_SEARCH_POOL_AND_SHADOW_EVIDENCE_UPGRADE"
     else:
         change = "ONLINE_EVIDENCE_RANKING_ADDITIVE"
     update_round(
@@ -6877,7 +6926,19 @@ def _search_availability_read_only(store: Any, alpha_db: Path, run_id: str, roun
 def _repair_availability_read_only(store: Any, config: Any, alpha_db: Path, machine: Any,
                                    run_id: str, round_id: str,
                                    slots_free: int) -> ResearchAvailabilityFacts:
-    """Conservative evidence over existing RepairPlans; never materializes missing work."""
+    """Fail-closed Repair availability evidence.
+
+    OPEN-1 established that the historical implementation only evaluated the
+    existing RepairPlan subset with an individual read-only Production Repair
+    preview. That number is a broad proxy and is NOT equivalent to the Actual
+    ``_select_repair_batch()`` result.
+
+    Until the shared pure Repair Eligibility Core exists, preserve useful proxy
+    telemetry in raw/selector/preview_safe fields but fail closed:
+    ``evaluation_complete=False`` and ``execution_eligible_count=0``.
+
+    No HTTP, no RepairPlan materialization, no workflow transition, no POST.
+    """
     try:
         plans = [dict(row) for row in store.load_repair_plans(run_id)]
         raw_rows = [
@@ -6920,33 +6981,40 @@ def _repair_availability_read_only(store: Any, config: Any, alpha_db: Path, mach
                 preview_errors += 1
                 continue
             items = list(preview.get("items") or [])
-            if items and str(items[0].get("required_action") or "") != "HOLD_UNCERTAIN" and bool(items[0].get("allowed_to_execute")):
+            if (
+                items
+                and str(items[0].get("required_action") or "") != "HOLD_UNCERTAIN"
+                and bool(items[0].get("allowed_to_execute"))
+            ):
                 safe_rows.append(plan)
-        if preview_errors:
-            return _availability_with_slots(
-                raw=len(raw_rows), selector=len(selector_rows), safe=len(safe_rows), executable=0,
-                slots_free=slots_free, complete=False,
-                reason="REPAIR_AVAILABILITY_INSUFFICIENT:PREVIEW_ERROR",
+
+        proxy_families = {
+            str(
+                (candidates.get(str(plan.get("parent_candidate_id") or "")) or {}).get("signal_family")
+                or family_id(candidates.get(str(plan.get("parent_candidate_id") or "")) or {})
             )
-        # Actual selector admits at most one parent per signal family in a batch.
-        executable_families = {
-            str((candidates.get(str(plan.get("parent_candidate_id") or "")) or {}).get("signal_family") or
-                family_id(candidates.get(str(plan.get("parent_candidate_id") or "")) or {}))
             for plan in safe_rows
         }
-        executable_families.discard("")
-        executable = len(executable_families)
+        proxy_families.discard("")
+        proxy_count = len(proxy_families)
+        suffix = f":PROXY_FAMILIES={proxy_count}"
+        if preview_errors:
+            suffix += f":PREVIEW_ERRORS={preview_errors}"
+
         return _availability_with_slots(
-            raw=len(raw_rows), selector=len(selector_rows), safe=len(safe_rows), executable=executable,
+            raw=len(raw_rows),
+            selector=len(selector_rows),
+            safe=len(safe_rows),
+            executable=0,
             slots_free=slots_free,
-            reason="AVAILABLE" if executable else "NO_EXECUTABLE_REPAIR_EVIDENCE",
+            complete=False,
+            reason="REPAIR_SELECTOR_PARITY_PENDING:INDIVIDUAL_PLAN_PREVIEW_PROXY_ONLY" + suffix,
         )
     except Exception as exc:
         return _availability_with_slots(
             raw=0, selector=0, safe=0, executable=0, slots_free=slots_free,
             complete=False, reason=f"REPAIR_AVAILABILITY_INSUFFICIENT:{type(exc).__name__}",
         )
-
 
 def _scheduler_shadow_observation(
     store: Any,

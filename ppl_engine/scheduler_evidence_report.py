@@ -420,7 +420,9 @@ def build_scheduler_evidence_report(db_path: Path, *, run_id: str) -> dict[str, 
         ]
         both_executable_free_slot = [
             row for row in evaluations
-            if int(row.get("search_execution_eligible_count") or 0) > 0
+            if int(row.get("search_evaluation_complete") or 0) == 1
+            and int(row.get("repair_evaluation_complete") or 0) == 1
+            and int(row.get("search_execution_eligible_count") or 0) > 0
             and int(row.get("repair_execution_eligible_count") or 0) > 0
             and int(row.get("remote_slots_free") or 0) > 0
         ]

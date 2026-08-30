@@ -45,7 +45,7 @@ def test_d1_policy_is_explicit_shadow_only_and_does_not_replace_authoritative_sc
     shadow = policy["scheduler_shadow"]
     assert shadow["enabled"] is True
     assert shadow["mode"] == SHADOW_ONLY_MODE
-    assert shadow["policy_version"] == "V31_SCHED_SHADOW_003"
+    assert shadow["policy_version"] == "V31_SCHED_SHADOW_004"
     assert shadow["productivity_windows"] == [100, 500]
     # D1 is an observation policy, not the authoritative scheduler identity.
     assert policy["policy_versions"]["scheduler"] == "V31_SCHED_001"
@@ -194,7 +194,7 @@ def test_d1_orchestrator_observation_is_durable_idempotent_and_keeps_selection_i
     assert first["authoritative"] is False
     assert first["execution_action_unchanged"] is True
     assert first["selection_identity_unchanged"] is True
-    assert first["shadow_policy_version"] == "V31_SCHED_SHADOW_003"
+    assert first["shadow_policy_version"] == "V31_SCHED_SHADOW_004"
 
     events = [e for e in load_events(store, "round_run_0006") if e["event_type"] == "SCHEDULER_SHADOW_DECISION"]
     assert len(events) == 1
