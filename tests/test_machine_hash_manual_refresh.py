@@ -58,11 +58,14 @@ def test_operation_specific_machine_hash_guard(monkeypatch):
     assert live._hash_file(machine_path) == APPROVED_HASH
     resume = validate_machine_lib_hash(machine_path, operation=MACHINE_HASH_OPERATION_RESUME)
     refresh = validate_machine_lib_hash(machine_path, operation=MACHINE_HASH_OPERATION_MANUAL_REFRESH)
-    assert resume["compatible_patch_id"] == refresh["compatible_patch_id"] == "STALE_RUNNING_RECOVERY_PATCH_V1"
+    # 58634F... is the canonical expected hash after the D2 re-baseline.
+    assert resume["check_result"] == refresh["check_result"] == "EXPECTED_HASH_MATCH"
+    assert "compatible_patch_id" not in resume
+    assert "compatible_patch_id" not in refresh
     assert resume["operation"] == MACHINE_HASH_OPERATION_RESUME
     assert refresh["operation"] == MACHINE_HASH_OPERATION_MANUAL_REFRESH
-    with pytest.raises(ConfigError, match="MACHINE_LIB_HASH_MISMATCH"):
-        validate_machine_lib_hash(machine_path)
+    # Default operation (STRICT, FORCED_STRICT) also matches the canonical hash.
+    assert validate_machine_lib_hash(machine_path)["check_result"] == "EXPECTED_HASH_MATCH"
 
     monkeypatch.setattr(live, "_hash_file", lambda _path: EXPECTED_MACHINE_HASH)
     assert validate_machine_lib_hash(machine_path, operation=MACHINE_HASH_OPERATION_MANUAL_REFRESH)["compatible_patch"] is False
@@ -75,10 +78,13 @@ def test_operation_specific_machine_hash_guard(monkeypatch):
         )
 
 
-def test_real_production_repair_guard_rejects_approved_mismatch():
+def test_real_production_repair_guard_rejects_unknown_hash(monkeypatch):
     """Call the production predicate itself; do not mock its hash guard."""
     from ppl_engine.production_repair import execute_production_repair
+    import ppl_engine.live_execution as live
 
+    # FORCED_STRICT operation: unknown hash must fail closed before any work.
+    monkeypatch.setattr(live, "_hash_file", lambda _path: "F" * 64)
     with pytest.raises(ConfigError, match="MACHINE_LIB_HASH_MISMATCH"):
         execute_production_repair(
             None, None, None, None, Path("unused.db"), ROOT / "machine_lib_V2_1.py",
@@ -129,7 +135,8 @@ def test_manual_refresh_preflight_and_compatible_audit_have_zero_business_writes
     preflight = preflight_manual_finalization_refresh(
         store, config, ROOT / "machine_lib_V2_1.py", policy_path, run_id="run_test",
     )
-    assert preflight["hash_result"]["compatible_patch"] is True
+    assert preflight["hash_result"]["check_result"] == "EXPECTED_HASH_MATCH"
+    assert preflight["hash_result"]["compatible_patch"] is False
 
     monkeypatch.setattr(orchestrator, "_manual_queue_csv_candidates", lambda *_args: ["candidate"])
     monkeypatch.setattr(orchestrator, "_refresh_manual_finalization_candidates", lambda *_args, **_kwargs: {
@@ -151,9 +158,10 @@ def test_manual_refresh_preflight_and_compatible_audit_have_zero_business_writes
         "power_pool_selected_count": 0, "repair_post_count": 0,
         "business_methods": ["GET"],
     }
+    # The former STALE_RUNNING_RECOVERY_PATCH_V1 compat exception is retired:
+    # the canonical hash matches directly, so no COMPATIBLE_PATCH audit fires.
     compatible = [x for x in audits if x.get("action") == "MACHINE_LIB_HASH_COMPATIBLE_PATCH"]
-    assert compatible and compatible[0]["operation"] == MACHINE_HASH_OPERATION_MANUAL_REFRESH
-    assert compatible[0]["compatible_patch_id"] == "STALE_RUNNING_RECOVERY_PATCH_V1"
+    assert compatible == []
     assert dict(store.get_run("run_test"))["execution_hash"] == before_run["execution_hash"]
     assert store.load_candidates("run_test") == before_candidates
 

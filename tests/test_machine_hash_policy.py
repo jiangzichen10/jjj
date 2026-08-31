@@ -16,7 +16,7 @@ from ppl_engine.config import (
 import ppl_engine.live_execution as live
 
 
-APPROVED_HASH = "58634F1EB01880EDC88B7D9904EDF3716335C35C17D57AAA0215985D82FA34E4"
+EXPECTED_HASH = "58634F1EB01880EDC88B7D9904EDF3716335C35C17D57AAA0215985D82FA34E4"
 UNKNOWN_HASH = "F" * 64
 
 
@@ -89,24 +89,31 @@ def test_invalid_runtime_and_cli_policy_fail_closed(tmp_path):
         live.resolve_machine_hash_policy(live.MACHINE_HASH_OPERATION_START, _config(cli_policy="maybe"))
 
 
-def test_approved_scope_and_non_scope_are_distinct(monkeypatch):
+def test_canonical_hash_matches_all_configurable_operations_and_compat_registry_is_retired(monkeypatch):
     audits = []
-    monkeypatch.setattr(live, "_hash_file", lambda _path: APPROVED_HASH)
+    monkeypatch.setattr(live, "_hash_file", lambda _path: EXPECTED_HASH)
     monkeypatch.setattr(live, "audit_event", lambda **payload: audits.append(payload))
+    # 58634F... is now the canonical expected hash: every configurable operation
+    # reports EXPECTED_HASH_MATCH (no MISMATCH_WARN, no compat exception).
     resume = live.validate_machine_lib_hash(
         Path("unused"), operation=live.MACHINE_HASH_OPERATION_RESUME,
         config=_config(runtime_policy="STRICT"),
     )
-    assert resume["check_result"] == "APPROVED_COMPATIBILITY"
-    assert resume["compatible_patch_id"] == "STALE_RUNNING_RECOVERY_PATCH_V1"
+    assert resume["check_result"] == "EXPECTED_HASH_MATCH"
+    assert resume["compatible_patch"] is False
+    assert "compatible_patch_id" not in resume
     start = live.validate_machine_lib_hash(
         Path("unused"), operation=live.MACHINE_HASH_OPERATION_START,
         config=_config(runtime_policy="WARN"),
     )
-    assert start["check_result"] == "MISMATCH_WARN"
-    assert start["compatible_patch"] is False
-    warning = next(x for x in audits if x["action"] == "MACHINE_LIB_HASH_WARNING")
-    assert "compatible_patch_id" not in warning
+    assert start["check_result"] == "EXPECTED_HASH_MATCH"
+    assert live._AUDITED_MACHINE_HASH_COMPATIBILITY == {}
+    assert all(
+        x["action"] != "MACHINE_LIB_HASH_COMPATIBLE_PATCH" for x in audits
+    )
+    assert all(
+        x["action"] != "MACHINE_LIB_HASH_WARNING" for x in audits
+    )
 
 
 @pytest.mark.parametrize("operation", [
@@ -119,7 +126,7 @@ def test_approved_scope_and_non_scope_are_distinct(monkeypatch):
 ])
 @pytest.mark.parametrize("requested", ["WARN", "OFF"])
 def test_forced_strict_overrides_runtime_and_cli(monkeypatch, operation, requested):
-    monkeypatch.setattr(live, "_hash_file", lambda _path: APPROVED_HASH)
+    monkeypatch.setattr(live, "_hash_file", lambda _path: UNKNOWN_HASH)
     config = _config(runtime_policy=requested, cli_policy=requested)
     resolved = live.resolve_machine_hash_policy(operation, config)
     assert resolved["requested_policy"] == requested

@@ -76,6 +76,45 @@ def _login_with_authentication_meter(machine_lib):
     return session, int(counter["authentication_post_count"])
 
 
+class _ReadOnlyRemoteGuard:
+    """Fail-closed session wrapper for remote-only reconciliation.
+
+    Any business write method (POST/PUT/PATCH/DELETE) raises ConfigError so the
+    reconcile entrypoint can never mutate the platform.  GET and attribute
+    delegation pass through unchanged (authentication already completed before
+    this wrapper is installed).
+    """
+
+    def __init__(self, session):
+        self._session = session
+
+    def get(self, url, *args, **kwargs):
+        return self._session.get(url, *args, **kwargs)
+
+    def request(self, method, url, *args, **kwargs):
+        if str(method or "").upper() != "GET":
+            raise ConfigError(f"REMOTE_ONLY_RECONCILE_NON_GET_BLOCKED:{method}")
+        return self._session.request(method, url, *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        raise ConfigError("REMOTE_ONLY_RECONCILE_NON_GET_BLOCKED:POST")
+
+    def put(self, *args, **kwargs):
+        raise ConfigError("REMOTE_ONLY_RECONCILE_NON_GET_BLOCKED:PUT")
+
+    def patch(self, *args, **kwargs):
+        raise ConfigError("REMOTE_ONLY_RECONCILE_NON_GET_BLOCKED:PATCH")
+
+    def delete(self, *args, **kwargs):
+        raise ConfigError("REMOTE_ONLY_RECONCILE_NON_GET_BLOCKED:DELETE")
+
+    def close(self):
+        return self._session.close()
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="WorldQuant BRAIN v3 runner (V2.2-compatible + resumable round orchestration)")
     action = parser.add_mutually_exclusive_group(required=True)
@@ -120,6 +159,7 @@ def _parser() -> argparse.ArgumentParser:
     action.add_argument("--recover-interrupted-repair-batch", action="store_true", help="locally release a fully-proven never-dispatched V3 REPAIR batch intent; no network/POST")
     action.add_argument("--repair-interrupted-batch-ledger", action="store_true", help="locally repair research-ledger batch attribution for durable candidates of one interrupted SEARCH batch; no network/POST")
     action.add_argument("--cancel-simulation", action="store_true", help="resolve one existing remote Simulation; DELETE requires explicit confirmation")
+    action.add_argument("--reconcile-existing-remote-only", action="store_true", help="fail-closed GET-only reconciliation of pre-existing remote Simulations; no scheduler, no Repair, no Search, no POST")
     parser.add_argument("--rules", type=Path, default=PROJECT_DIR / "ppl_rules.yaml")
     parser.add_argument("--plan", type=Path, default=PROJECT_DIR / "ppl_plan.yaml")
     parser.add_argument("--round-plan", type=Path, default=PROJECT_DIR / "ppl_plan_v3.yaml", help="V3 round execution plan")
@@ -142,6 +182,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-source", choices=("all", "deferred", "check-derived"), default="all", help="filter for --list-repair-plans")
     parser.add_argument("--candidate-id", help="candidate id for --preview-rescue")
     parser.add_argument("--simulation-id", help="remote simulation id for --cancel-simulation")
+    parser.add_argument("--sim-key", help="sim_key to restrict --reconcile-existing-remote-only (optional; mutually supports --candidate-id)")
     parser.add_argument("--audit-limit", type=int, default=50, help="max records for --show-audit-log")
     parser.add_argument("--audit-action", help="filter --show-audit-log by action")
     parser.add_argument("--audit-candidate-id", help="filter --show-audit-log by candidate_id")
@@ -179,7 +220,7 @@ def main(argv=None) -> int:
     try:
         if args.extension_evidence_run and not (args.start_round or args.continuous):
             raise ConfigError("--extension-evidence-run is only valid with --start-round or a new --continuous run")
-        selected_plan = args.continuous_plan if (args.continuous or args.scheduler_evidence_report or args.refresh_qualified_checks) else args.round_plan if (
+        selected_plan = args.continuous_plan if (args.continuous or args.scheduler_evidence_report or args.refresh_qualified_checks or args.reconcile_existing_remote_only) else args.round_plan if (
     args.start_round
     or args.resume_round
     or args.reopen_round_after_bugfix
@@ -284,6 +325,29 @@ def main(argv=None) -> int:
                         PROJECT_DIR / "machine_lib_V2_1.py", args.round_policy, PROJECT_DIR,
                         run_id=args.run_id, preflight=local_preflight,
                         authentication_post_count=authentication_post_count,
+                    )
+                finally:
+                    session.close()
+            print(json.dumps(report, ensure_ascii=False, indent=2)); return 0
+        if args.reconcile_existing_remote_only:
+            from ppl_engine.continuous_remote import reconcile_existing_remote_only
+            if not args.run_id:
+                raise ConfigError("--reconcile-existing-remote-only requires --run-id")
+            if args.allow_simulation_post:
+                raise ConfigError("RECONCILE_EXISTING_REMOTE_ONLY_FORBIDS_SIMULATION_POST")
+            if not store.path.exists():
+                raise ConfigError("ppl_runner.db does not exist")
+            import machine_lib_V2_1 as machine_lib
+            with SingleRunnerLock(args.lock):
+                session, authentication_post_count = _login_with_authentication_meter(machine_lib)
+                session = _ReadOnlyRemoteGuard(session)
+                try:
+                    report = reconcile_existing_remote_only(
+                        store, config, machine_lib, session, PROJECT_DIR / "alpha_results.db",
+                        run_id=args.run_id,
+                        candidate_id=args.candidate_id or None,
+                        sim_key=args.sim_key or None,
+                        limit=8,
                     )
                 finally:
                     session.close()

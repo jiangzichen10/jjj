@@ -204,4 +204,4 @@ def test_execution_lifecycle_and_repeat_preview(monkeypatch,tmp_path):
 
 
 def test_machine_hash_constant_matches_baseline():
-    assert EXPECTED_MACHINE_HASH == "0F8944F696EAC8481771AE1DF87EBD2F467CF69922939B46E783944E9A794762"
+    assert EXPECTED_MACHINE_HASH == "58634F1EB01880EDC88B7D9904EDF3716335C35C17D57AAA0215985D82FA34E4"

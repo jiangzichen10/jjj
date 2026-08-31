@@ -39,7 +39,10 @@ TOTAL_CAP = 10
 INITIAL_CAP = 6
 CANARY_CAP = 2
 REPAIR_RESERVE = 4
-EXPECTED_MACHINE_HASH = "0F8944F696EAC8481771AE1DF87EBD2F467CF69922939B46E783944E9A794762"
+# D2 Safety Gate re-baseline (2026-08-31): the D2E baseline machine library is
+# now the canonical attestation target.  Historical expected hash before this
+# re-baseline: 0F8944F696EAC8481771AE1DF87EBD2F467CF69922939B46E783944E9A794762.
+EXPECTED_MACHINE_HASH = "58634F1EB01880EDC88B7D9904EDF3716335C35C17D57AAA0215985D82FA34E4"
 
 MACHINE_HASH_POLICY_STRICT = "STRICT"
 MACHINE_HASH_POLICY_WARN = "WARN"
@@ -82,19 +85,12 @@ MACHINE_HASH_OPERATION_REGISTRY = {
     MACHINE_HASH_OPERATION_REMOTE_RESOLUTION: MACHINE_HASH_OPERATION_CLASS_NO_GUARD,
 }
 
-# Explicitly audited machine-lib patches and the exact existing-run operations
-# for which each patch is semantically irrelevant.  Unknown hashes and all
-# unlisted live operations remain strict.
-_AUDITED_MACHINE_HASH_COMPATIBILITY = {
-    "58634F1EB01880EDC88B7D9904EDF3716335C35C17D57AAA0215985D82FA34E4": {
-        "compatible_patch_id": "STALE_RUNNING_RECOVERY_PATCH_V1",
-        "reason": "STALE_RUNNING_RECOVERY_PATCH_ONLY",
-        "allowed_operations": frozenset({
-            MACHINE_HASH_OPERATION_RESUME,
-            MACHINE_HASH_OPERATION_MANUAL_REFRESH,
-        }),
-    },
-}
+# Retired 2026-08-31 with the D2 machine-hash re-baseline: 58634F... is now the
+# canonical EXPECTED_MACHINE_HASH, so the former STALE_RUNNING_RECOVERY_PATCH_V1
+# compatibility exception is semantically redundant and must not coexist with the
+# canonical expected value.  Unknown hashes and all unlisted live operations
+# remain strict / configurable under MACHINE_HASH_OPERATION_REGISTRY.
+_AUDITED_MACHINE_HASH_COMPATIBILITY = {}
 
 
 def _now() -> str:

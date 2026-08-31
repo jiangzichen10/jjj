@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from .audit_log import audit_event
+from .config import ConfigError
 from .simulation_adapter import production_remote_resolution_status
 
 
@@ -243,18 +244,36 @@ def remote_slot_snapshot(store: Any, run_id: str, slot_limit: int) -> RemoteSlot
     return RemoteSlotSnapshot(int(slot_limit), reserved, running, uncertain, wait_auth)
 
 
-def due_remote_work(store: Any, run_id: str, *, limit: int = 8, now: Optional[str] = None) -> List[Dict[str, Any]]:
+def due_remote_work(
+    store: Any, run_id: str, *, limit: int = 8, now: Optional[str] = None,
+    candidate_ids: Optional[Iterable[str]] = None, sim_keys: Optional[Iterable[str]] = None,
+) -> List[Dict[str, Any]]:
     due = now or _now()
+    candidates = {str(x) for x in (candidate_ids or []) if x}
+    keys = {str(x) for x in (sim_keys or []) if x}
+    clauses = [
+        "run_id=?",
+        "queue_state IN ("
+        "'POLL_DUE','WAIT_REMOTE','WAIT_RATE_LIMIT','WAIT_NETWORK','WAIT_AUTH','MISSING_CONFIRMATION_PENDING'"
+        ") AND simulation_url IS NOT NULL",
+        "(next_poll_at IS NULL OR next_poll_at<=?)",
+    ]
+    params: List[Any] = [run_id, due]
+    if candidates:
+        marks = ",".join("?" for _ in sorted(candidates))
+        clauses.append(f"candidate_id IN ({marks})")
+        params.extend(sorted(candidates))
+    if keys:
+        marks = ",".join("?" for _ in sorted(keys))
+        clauses.append(f"sim_key IN ({marks})")
+        params.extend(sorted(keys))
     with store.connect() as conn:
         return [dict(x) for x in conn.execute(
-            """SELECT * FROM ppl_remote_work
-               WHERE run_id=? AND queue_state IN (
-                   'POLL_DUE','WAIT_REMOTE','WAIT_RATE_LIMIT','WAIT_NETWORK','WAIT_AUTH','MISSING_CONFIRMATION_PENDING'
-               ) AND simulation_url IS NOT NULL
-                 AND (next_poll_at IS NULL OR next_poll_at<=?)
-               ORDER BY COALESCE(next_poll_at,created_at),created_at
-               LIMIT ?""",
-            (run_id, due, max(1, int(limit))),
+            f"""SELECT * FROM ppl_remote_work
+                WHERE {' AND '.join(clauses)}
+                ORDER BY COALESCE(next_poll_at,created_at),created_at
+                LIMIT ?""",
+            tuple(params) + (max(1, int(limit)),),
         )]
 
 
@@ -350,9 +369,13 @@ def poll_due_remote_work(
     poll_interval_seconds: float = 5.0,
     network_backoff_seconds: float = 30.0,
     max_network_backoff_seconds: float = 300.0,
+    candidate_ids: Optional[Iterable[str]] = None,
+    sim_keys: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
     """Poll due remote jobs once each; never sleep and never POST a Simulation."""
-    rows = due_remote_work(store, run_id, limit=limit)
+    rows = due_remote_work(
+        store, run_id, limit=limit, candidate_ids=candidate_ids, sim_keys=sim_keys,
+    )
     if not rows or session is None:
         return {"polled": 0, "completed_candidate_ids": [], "remote_missing_candidate_ids": [], "waits": 0}
     candidates = {str(x.get("candidate_id")): dict(x) for x in store.load_candidates(run_id)}
@@ -553,3 +576,121 @@ def register_submitted_remote(
             (run_id,candidate_id,sim_key,simulation_url,"SUBMITTED","WAIT_REMOTE",next_poll,
              0,0,1,float(initial_retry_after or 0.5),submitted_at,now,now),
         )
+
+
+def reconcile_existing_remote_only(
+    store: Any,
+    config: Any,
+    machine: Any,
+    session: Any,
+    alpha_db: Path,
+    run_id: str,
+    *,
+    candidate_id: Optional[str] = None,
+    sim_key: Optional[str] = None,
+    limit: int = 8,
+) -> Dict[str, Any]:
+    """Standalone, fail-closed remote-only reconciliation (D2 closure entry).
+
+    This entrypoint exists ONLY to settle pre-existing remote Simulation work
+    into durable local state.  Safety invariants (all enforced):
+
+    - processes only rows that already exist in ``ppl_remote_work``;
+    - every processed row must already have a durable ``simulation_url``,
+      otherwise the call fails closed (no fallback, no POST);
+    - it GETs existing Simulation URLs only; it never POSTs a Simulation and
+      never replaces a saved ``simulation_url``;
+    - it never enters the scheduler / Actual or Shadow selector, never
+      materializes a RepairPlan, never creates a Search candidate or a Repair
+      child, never changes Search/Repair budgets or consumed counters;
+    - QUARANTINED_UNCERTAIN rows are never selected and never re-POSTed;
+    - the caller (CLI) additionally wraps the session so any non-GET business
+      method raises ConfigError.
+
+    Completed rows are persisted through the production APIs only:
+    ``machine.cache_put`` (alpha_results), ``_sync_candidate_fact`` (candidate
+    lifecycle + state transition) and ``sync_simulation_ledger`` (research
+    ledger refresh).  No hand-written SQL ever fabricates a COMPLETE state.
+    """
+    if not store.get_run(run_id):
+        raise ConfigError("V3_RUN_NOT_FOUND")
+    with store.connect() as conn:
+        rr = conn.execute(
+            "SELECT round_id FROM ppl_rounds WHERE run_id=?", (run_id,),
+        ).fetchone()
+    if not rr:
+        raise ConfigError("V3_ROUND_NOT_FOUND")
+    round_id = str(rr[0])
+
+    target_candidate_ids: List[str] = []
+    target_sim_keys: List[str] = []
+    if candidate_id or sim_key:
+        if candidate_id and sim_key:
+            with store.connect() as conn:
+                row = conn.execute(
+                    "SELECT sim_key,simulation_url FROM ppl_remote_work WHERE run_id=? AND candidate_id=?",
+                    (run_id, candidate_id),
+                ).fetchone()
+            if not row:
+                raise ConfigError("RECONCILE_FAIL_CLOSED_CANDIDATE_NO_REMOTE_WORK")
+            if str(row[0]) != str(sim_key):
+                raise ConfigError("RECONCILE_FAIL_CLOSED_SIM_KEY_MISMATCH")
+            if not str(row[1] or "").strip():
+                raise ConfigError("RECONCILE_FAIL_CLOSED_NO_DURABLE_SIMULATION_URL")
+            target_candidate_ids.append(candidate_id)
+            target_sim_keys.append(str(row[0]))
+        elif candidate_id:
+            with store.connect() as conn:
+                row = conn.execute(
+                    "SELECT sim_key,simulation_url FROM ppl_remote_work WHERE run_id=? AND candidate_id=?",
+                    (run_id, candidate_id),
+                ).fetchone()
+            if not row:
+                raise ConfigError("RECONCILE_FAIL_CLOSED_CANDIDATE_NO_REMOTE_WORK")
+            if not str(row[1] or "").strip():
+                raise ConfigError("RECONCILE_FAIL_CLOSED_NO_DURABLE_SIMULATION_URL")
+            target_candidate_ids.append(candidate_id)
+            target_sim_keys.append(str(row[0]))
+        else:  # sim_key only
+            with store.connect() as conn:
+                row = conn.execute(
+                    "SELECT candidate_id,simulation_url FROM ppl_remote_work WHERE run_id=? AND sim_key=?",
+                    (run_id, sim_key),
+                ).fetchone()
+            if not row:
+                raise ConfigError("RECONCILE_FAIL_CLOSED_SIM_KEY_NO_REMOTE_WORK")
+            if not str(row[1] or "").strip():
+                raise ConfigError("RECONCILE_FAIL_CLOSED_NO_DURABLE_SIMULATION_URL")
+            target_candidate_ids.append(str(row[0]))
+            target_sim_keys.append(sim_key)
+
+    report = poll_due_remote_work(
+        store, config, machine, session, alpha_db, run_id,
+        limit=limit, candidate_ids=target_candidate_ids or None,
+        sim_keys=target_sim_keys or None,
+    )
+    completed = [str(x) for x in (report.get("completed_candidate_ids") or [])]
+    if completed:
+        from .research_telemetry import sync_simulation_ledger
+        sync_simulation_ledger(
+            store, alpha_db, round_id, run_id, candidate_ids=completed,
+        )
+        audit_event(
+            action="RECONCILE_EXISTING_REMOTE_ONLY", run_id=run_id,
+            round_id=round_id, candidate_ids=completed,
+            polled=int(report.get("polled") or 0),
+            simulation_posts=0, repair_plans_created=0,
+            search_candidates_created=0, budget_delta=0,
+        )
+    return {
+        **report,
+        "round_id": round_id,
+        "target_candidate_ids": target_candidate_ids,
+        "target_sim_keys": target_sim_keys,
+        "mode": "REMOTE_ONLY_RECONCILE",
+        "simulation_posts": 0,
+        "repair_plans_created": 0,
+        "search_candidates_created": 0,
+        "scheduler_ticks": 0,
+        "budget_delta": 0,
+    }
