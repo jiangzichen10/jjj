@@ -91,6 +91,7 @@ from .round_store import (
     load_dataset_states,
     load_dataset_refreshes,
     load_policy_state,
+    load_scheduler_authority_state,
     record_dataset_refresh,
     upsert_dataset_state,
     set_batch_intent,
@@ -143,7 +144,7 @@ from .strategy_compat import (
     repair_decisions_from_selected_plans, search_decisions_from_selected_rows,
 )
 from .research_run_mode import (
-    COMPATIBILITY_EVIDENCE_MODE, parse_research_run_policy, research_run_status,
+    ADAPTIVE_CANARY_MODE, COMPATIBILITY_EVIDENCE_MODE, parse_research_run_policy, research_run_status,
     validate_durable_research_run_lock, validate_new_research_run,
 )
 from .research_telemetry import (
@@ -7013,6 +7014,7 @@ def round_status(store: Any, config: Any, alpha_db: Path, *, run_id: Optional[st
         "run": {"status": run.get("status"), "current_stage": run.get("current_stage"), "post_attempted": run.get("post_attempted"),
                 "post_confirmed": run.get("post_confirmed"), "post_uncertain": run.get("post_uncertain"), "post_consumed": run.get("post_consumed")},
         "research_run": research_run_status(stored_round_policy, run_id=run_id),
+        "scheduler_authority_state": load_scheduler_authority_state(store, round_id=str(round_row["round_id"])),
         "lifecycle": {
             "mode": stored_continuous.lifecycle_mode.value,
             "continuous": stored_continuous.enabled,
@@ -7897,6 +7899,12 @@ def execute_round(store: Any, config: Any, machine: Any, session: Any, alpha_db:
                   max_batches: Optional[int] = None,
     extension_evidence_run: Optional[str] = None) -> Dict[str, Any]:
     policy = load_round_policy(round_policy_path, config)
+    research_policy = parse_research_run_policy(policy)
+    if research_policy.mode == ADAPTIVE_CANARY_MODE:
+        # D3-A persists and validates identity only.  Until the single-authority
+        # dispatcher, activation gate, POST envelope and rollback are implemented,
+        # attempting to execute a canary must fail before creating or resuming it.
+        raise ConfigError("D3_ADAPTIVE_EXECUTION_NOT_IMPLEMENTED")
     continuous = parse_continuous_policy(policy)
     strategy_integration = dict(policy.get("strategy_integration") or {})
     strategy_compat_enabled = bool(continuous.enabled and strategy_integration.get("enabled", False))

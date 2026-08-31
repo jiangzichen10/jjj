@@ -221,6 +221,22 @@ def ensure_round_schema(store: Any) -> None:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(round_id,policy_type)
             );
+            CREATE TABLE IF NOT EXISTS ppl_round_scheduler_authority_state(
+                round_id TEXT PRIMARY KEY REFERENCES ppl_rounds(round_id),
+                run_id TEXT NOT NULL UNIQUE,
+                state TEXT NOT NULL,
+                active_authority TEXT NOT NULL,
+                shadow_authority TEXT NOT NULL,
+                pending_authority TEXT,
+                authority_epoch INTEGER NOT NULL DEFAULT 0,
+                scheduler_policy_version TEXT NOT NULL,
+                scheduler_policy_hash TEXT NOT NULL,
+                activation_gate_report_key TEXT,
+                preflight_json TEXT NOT NULL DEFAULT '{}',
+                activated_batch_no INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS ppl_round_dataset_states(
                 round_id TEXT NOT NULL REFERENCES ppl_rounds(round_id),
                 dataset_id TEXT NOT NULL,
@@ -298,6 +314,28 @@ def create_round(store: Any, *, round_id: str, run_id: str, policy: Mapping[str,
             (round_id,run_id,str(policy["objective"]),"CREATED","SEARCH",_json(policy),config_hash(policy),
              int(total_budget),int(search_budget),int(repair_budget),int(policy["batch_size"]),now,now),
         )
+        # D3-A persists an ARMED authority identity with no active executor.
+        # It is deliberately created in the same transaction as the round so a
+        # crash cannot leave an Adaptive canary without its authority lock.
+        from .research_run_mode import ADAPTIVE_CANARY_MODE, parse_research_run_policy
+        research = parse_research_run_policy(policy)
+        if research.mode == ADAPTIVE_CANARY_MODE:
+            scheduler_raw = dict(policy.get("scheduler_shadow") or {})
+            scheduler_body = _json(scheduler_raw)
+            scheduler_digest = hashlib.sha256(scheduler_body.encode("utf-8")).hexdigest()
+            conn.execute(
+                """INSERT INTO ppl_round_scheduler_authority_state(
+                       round_id,run_id,state,active_authority,shadow_authority,pending_authority,
+                       authority_epoch,scheduler_policy_version,scheduler_policy_hash,
+                       activation_gate_report_key,preflight_json,activated_batch_no,created_at,updated_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    round_id, run_id, "ARMED", "NONE", research.scheduler_shadow,
+                    research.scheduler_authority, 0,
+                    str(scheduler_raw.get("policy_version") or ""), scheduler_digest,
+                    research.d2_gate_report_key, "{}", None, now, now,
+                ),
+            )
 
 
 def get_round(store: Any, *, round_id: Optional[str] = None, run_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -312,6 +350,67 @@ def get_round(store: Any, *, round_id: Optional[str] = None, run_id: Optional[st
         else:
             row = conn.execute("SELECT * FROM ppl_rounds ORDER BY started_at DESC LIMIT 1").fetchone()
         return dict(row) if row else None
+
+
+def load_scheduler_authority_state(
+    store: Any, *, round_id: Optional[str] = None, run_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Load the durable D3 authority identity without synthesizing defaults."""
+    if not round_id and not run_id:
+        raise ValueError("SCHEDULER_AUTHORITY_LOOKUP_KEY_REQUIRED")
+    with store.connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ppl_round_scheduler_authority_state'"
+        ).fetchone()
+        if not exists:
+            return None
+        if round_id:
+            row = conn.execute(
+                "SELECT * FROM ppl_round_scheduler_authority_state WHERE round_id=?", (round_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM ppl_round_scheduler_authority_state WHERE run_id=?", (run_id,),
+            ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["preflight"] = json.loads(str(result.pop("preflight_json") or "{}"))
+        return result
+
+
+def checkpoint_scheduler_authority_preflight(
+    store: Any,
+    *,
+    round_id: str,
+    run_id: str,
+    expected_epoch: int,
+    preflight: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Durably checkpoint a read-only D3 preflight without activating authority."""
+    ensure_round_schema(store)
+    now = _now()
+    payload = _json(dict(preflight or {}))
+    with store.connect(stage="D3_AUTHORITY_PREFLIGHT_CHECKPOINT") as conn:
+        row = conn.execute(
+            "SELECT * FROM ppl_round_scheduler_authority_state WHERE round_id=? AND run_id=?",
+            (round_id, run_id),
+        ).fetchone()
+        if not row:
+            raise RuntimeError("D3_AUTHORITY_STATE_NOT_FOUND")
+        if str(row["state"] or "") != "ARMED" or str(row["active_authority"] or "") != "NONE":
+            raise RuntimeError("D3_AUTHORITY_PREFLIGHT_REQUIRES_ARMED_INACTIVE_STATE")
+        if int(row["authority_epoch"] or 0) != int(expected_epoch):
+            raise RuntimeError("D3_AUTHORITY_EPOCH_CONFLICT")
+        conn.execute(
+            """UPDATE ppl_round_scheduler_authority_state
+               SET preflight_json=?,updated_at=? WHERE round_id=? AND run_id=? AND authority_epoch=?""",
+            (payload, now, round_id, run_id, int(expected_epoch)),
+        )
+    state = load_scheduler_authority_state(store, round_id=round_id)
+    if not state:
+        raise RuntimeError("D3_AUTHORITY_STATE_CHECKPOINT_LOST")
+    return state
 
 
 def update_round(store: Any, round_id: str, **fields: Any) -> None:
